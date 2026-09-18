@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { households, users } from "@/db/schema";
+import { households, users, type WorkdayStatus } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
 import { setWorkday } from "@/lib/workdays";
 
@@ -14,36 +14,44 @@ function refresh() {
   revalidatePath("/", "layout");
 }
 
-/* ----------------------------------------------------------- working days -- */
+/* ------------------------------------------------------------- attendance -- */
 
-/** Marks one date as working or off, or clears the override. */
-export async function setWorkdayOverride(
+/**
+ * Records what happened on one date: worked, off, off sick or on leave. The
+ * record is cleared when the chosen status is what the usual pattern would give
+ * anyway and there is nothing to note, so only real exceptions are stored.
+ */
+export async function setDayStatus(
   date: string,
-  isWorking: boolean | null,
+  status: WorkdayStatus,
+  note?: string,
 ): Promise<void> {
   const viewer = await requireAdmin();
-  await setWorkday(viewer.household.id, date, isWorking);
-  refresh();
-}
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
 
-/** Flips a date between working and not, relative to the household default. */
-export async function toggleWorkday(
-  date: string,
-  currentlyWorking: boolean,
-): Promise<void> {
-  const viewer = await requireAdmin();
   const defaults = new Set(viewer.household.workingWeekdays);
   const [y, m, d] = date.split("-").map(Number);
   const jsDay = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  const iso = jsDay === 0 ? 7 : jsDay;
+  const weekday = jsDay === 0 ? 7 : jsDay;
 
-  const wanted = !currentlyWorking;
-  // Clear the override when the wanted state matches the household default.
+  const usual: WorkdayStatus = defaults.has(weekday) ? "working" : "off";
+  const trimmed = note?.trim() || null;
+
   await setWorkday(
     viewer.household.id,
     date,
-    defaults.has(iso) === wanted ? null : wanted,
+    status === usual && !trimmed ? null : status,
+    trimmed,
+    viewer.user.id,
   );
+  refresh();
+}
+
+/** Puts a date back to whatever the usual weekday pattern says. */
+export async function clearDayStatus(date: string): Promise<void> {
+  const viewer = await requireAdmin();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  await setWorkday(viewer.household.id, date, null, null, viewer.user.id);
   refresh();
 }
 

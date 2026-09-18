@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Card, Chip, Empty } from "@/components/ui";
+import Link from "next/link";
+import { Card, Chip, Empty, IconBook } from "@/components/ui";
 import { requireViewer } from "@/lib/auth";
 import {
   formatDate,
@@ -11,7 +12,7 @@ import {
   weekdayShort,
   type IsoDate,
 } from "@/lib/dates";
-import { loadMeals, SLOTS, SLOT_LABEL, type MealWithPrep } from "@/lib/meals";
+import { groupBySlot, loadMeals, SLOT_LABEL } from "@/lib/meals";
 import { loadWorkdayCalendar } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
@@ -49,8 +50,8 @@ export default async function MenuPage() {
 
       {weeks.map((week) => {
         const dates = isoWeek(week.monday);
-        const weekMeals = meals.filter(
-          (m) => m.date >= week.monday && m.date <= shiftDate(week.monday, 6),
+        const planned = dates.filter(
+          (date) => groupBySlot(meals, date).length > 0,
         );
 
         return (
@@ -62,56 +63,70 @@ export default async function MenuPage() {
               </span>
             </div>
 
-            {weekMeals.length === 0 ? (
+            {planned.length === 0 ? (
               <Card>
                 <Empty title="No menu yet for this week" />
               </Card>
             ) : (
               <div className="flex flex-col gap-2">
-                {dates.map((date) => {
-                  const dayMeals = SLOTS.map((slot) =>
-                    weekMeals.find((m) => m.date === date && m.slot === slot),
-                  ).filter(Boolean) as MealWithPrep[];
-                  if (dayMeals.length === 0) return null;
-
-                  return (
-                    <Card key={date} className="overflow-hidden">
-                      <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
-                        <span className="label">{weekdayShort(date)}</span>
-                        <span className="font-mono text-sm font-semibold tabular">
-                          {formatDayNumber(date)}
+                {planned.map((date) => (
+                  <Card key={date} className="overflow-hidden">
+                    <div className="flex items-center gap-2 border-b border-line bg-surface-2 px-4 py-2">
+                      <span className="label">{weekdayShort(date)}</span>
+                      <span className="font-mono text-sm font-semibold tabular">
+                        {formatDayNumber(date)}
+                      </span>
+                      {date === today ? (
+                        <Chip tone="accent" className="ml-auto">
+                          Today
+                        </Chip>
+                      ) : !calendar.isWorking(date) ? (
+                        <span className="ml-auto text-xs text-muted">
+                          Not a working day
                         </span>
-                        {date === today ? (
-                          <Chip tone="accent" className="ml-auto">
-                            Today
-                          </Chip>
-                        ) : !calendar.isWorking(date) ? (
-                          <span className="ml-auto text-xs text-muted">
-                            Not a working day
-                          </span>
-                        ) : null}
-                      </div>
-                      <ul>
-                        {dayMeals.map((meal) => (
-                          <li
-                            key={meal.id}
-                            className="flex items-start gap-3 border-b border-line px-4 py-3 last:border-b-0"
-                          >
-                            <span className="label w-14 flex-none pt-0.5">
-                              {SLOT_LABEL[meal.slot]}
-                            </span>
-                            <div className="flex min-w-0 flex-1 flex-col gap-1">
-                              <span className="text-[15px] leading-snug font-bold">
-                                {meal.dish}
-                              </span>
+                      ) : null}
+                    </div>
+
+                    {/* Slots with nothing planned are left out entirely. */}
+                    {groupBySlot(meals, date).map((group) => (
+                      <div
+                        key={group.slot}
+                        className="border-b border-line last:border-b-0"
+                      >
+                        <div className="label px-4 pt-2.5 pb-1">
+                          {SLOT_LABEL[group.slot]}
+                        </div>
+                        <ul>
+                          {group.entries.map((meal) => (
+                            <li
+                              key={meal.id}
+                              className="flex flex-col gap-1 px-4 pt-1 pb-3"
+                            >
+                              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                <span className="text-[15px] leading-snug font-bold">
+                                  {meal.dish}
+                                </span>
+                                {meal.forWhom ? (
+                                  <Chip tone="accent">for {meal.forWhom}</Chip>
+                                ) : null}
+                              </div>
                               {meal.notes ? (
                                 <span className="text-[13px] leading-snug text-ink-2">
                                   {meal.notes}
                                 </span>
                               ) : null}
+                              {meal.recipeId ? (
+                                <Link
+                                  href={`/recipes/${meal.recipeId}`}
+                                  className="inline-flex items-center gap-1 self-start rounded-full border border-accent-line bg-accent-soft px-2.5 py-0.5 text-xs font-bold text-accent"
+                                >
+                                  <IconBook size={13} />
+                                  Recipe
+                                </Link>
+                              ) : null}
                               <div className="flex flex-wrap gap-1.5">
                                 {meal.prepTiming === "day_before" ? (
-                                  <Chip tone="accent">
+                                  <Chip>
                                     Prep on {weekdayShort(meal.prepDate)}{" "}
                                     {formatDayNumber(meal.prepDate)}
                                   </Chip>
@@ -122,13 +137,13 @@ export default async function MenuPage() {
                                   <Chip tone="ok">Done</Chip>
                                 ) : null}
                               </div>
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    </Card>
-                  );
-                })}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </Card>
+                ))}
               </div>
             )}
           </section>

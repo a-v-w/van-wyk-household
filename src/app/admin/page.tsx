@@ -12,11 +12,19 @@ import {
   buttonClass,
 } from "@/components/ui";
 import { WorkdayStrip, type WorkdayCell } from "@/components/workday-strip";
-import { householdMembers, requireAdmin } from "@/lib/auth";
 import {
+  firstName,
+  householdEmployee,
+  householdMembers,
+  requireAdmin,
+} from "@/lib/auth";
+import {
+  endOfMonth,
   formatDate,
+  formatDayDate,
   formatDayNumber,
   formatLongDate,
+  formatMonth,
   formatTime,
   isoWeek,
   isoWeekday,
@@ -33,11 +41,43 @@ import {
 } from "@/lib/groceries";
 import { loadDayKitchen, SLOT_LABEL } from "@/lib/meals";
 import { describeRule, loadOccurrences } from "@/lib/tasks";
-import { loadWorkdayCalendar } from "@/lib/workdays";
+import { loadAttendance, STATUS_LABEL } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Dashboard" };
+
+/** One number in the attendance row. */
+function Tally({
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  label: string;
+  value: number;
+  hint?: string;
+  tone?: "accent" | "danger" | "lock";
+}) {
+  const colour =
+    tone === "danger"
+      ? "text-danger"
+      : tone === "lock"
+        ? "text-lock"
+        : tone === "accent"
+          ? "text-accent"
+          : "text-ink";
+
+  return (
+    <div className="flex flex-col gap-0.5 rounded-lg bg-surface-2 px-3 py-2.5">
+      <span className={`font-mono text-2xl leading-none font-bold tabular ${colour}`}>
+        {value}
+      </span>
+      <span className="text-xs font-semibold text-ink-2">{label}</span>
+      {hint ? <span className="text-[11px] text-muted">{hint}</span> : null}
+    </div>
+  );
+}
 
 export default async function AdminDashboard() {
   const viewer = await requireAdmin();
@@ -46,8 +86,20 @@ export default async function AdminDashboard() {
   const monday = startOfIsoWeek(today);
   const week = isoWeek(today);
 
-  const calendar = await loadWorkdayCalendar(household, monday, week[6]);
+  // The attendance card counts the calendar month, so load that whole range and
+  // reuse the calendar for the week strip.
+  const monthStart = `${today.slice(0, 7)}-01`;
+  const monthEnd = endOfMonth(today);
+  const { calendar, attendance } = await loadAttendance(
+    household,
+    monthStart,
+    monthEnd,
+    today,
+  );
+  const monthLabel = formatMonth(today);
+
   const members = await householdMembers(household.id);
+  const employee = await householdEmployee(household.id);
 
   const [weekOccurrences, myToday, kitchen, cycle, awaiting] = await Promise.all(
     [
@@ -91,15 +143,21 @@ export default async function AdminDashboard() {
     .slice(0, 6);
 
   const defaults = new Set(household.workingWeekdays);
-  const days: WorkdayCell[] = week.map((date) => ({
-    date,
-    weekday: weekdayShort(date),
-    dayNumber: formatDayNumber(date),
-    working: calendar.isWorking(date),
-    isToday: date === today,
-    overridden:
-      calendar.isWorking(date) && !defaults.has(isoWeekday(date)),
-  }));
+  const days: WorkdayCell[] = week.map((date) => {
+    const record = calendar.recordFor(date);
+    const status = calendar.statusFor(date);
+    const usual = defaults.has(isoWeekday(date)) ? "working" : "off";
+    return {
+      date,
+      weekday: weekdayShort(date),
+      dayNumber: formatDayNumber(date),
+      longDate: formatDayDate(date),
+      status,
+      note: record?.note ?? null,
+      isToday: date === today,
+      exception: status !== usual,
+    };
+  });
 
   const employeeTodayList = weekOccurrences.filter(
     (o) => o.date === today && o.task.assignedTo !== user.id,
@@ -129,13 +187,91 @@ export default async function AdminDashboard() {
       <Card className="p-5">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <span className="label">
-            Working days · {formatDate(monday)} to {formatDate(week[6])}
+            {employee ? `${firstName(employee)}'s week` : "Working days"} ·{" "}
+            {formatDate(monday)} to {formatDate(week[6])}
           </span>
           <span className="text-[13px] text-muted">
-            Click a day to switch it between working and off.
+            Click a day to record whether it was worked, off, sick or leave.
           </span>
         </div>
         <WorkdayStrip days={days} />
+      </Card>
+
+      <Card className="flex flex-col p-5">
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <span className="label">
+            Attendance · {monthLabel}
+            {employee ? ` · ${firstName(employee)}` : ""}
+          </span>
+          <span className="text-[13px] text-muted">
+            Counted to {formatDate(today)}.
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Tally label="Days worked" value={attendance.worked} />
+          <Tally
+            label="Extra days"
+            value={attendance.extra}
+            hint="Outside the usual weekdays"
+            tone={attendance.extra > 0 ? "accent" : undefined}
+          />
+          <Tally
+            label="Sick"
+            value={attendance.sick}
+            tone={attendance.sick > 0 ? "danger" : undefined}
+          />
+          <Tally
+            label="Leave"
+            value={attendance.leave}
+            tone={attendance.leave > 0 ? "lock" : undefined}
+          />
+        </div>
+
+        {attendance.exceptions.length > 0 ? (
+          <div className="mt-4 flex flex-col gap-2 border-t border-line pt-3">
+            <span className="label">Days that were different</span>
+            <ul className="flex flex-col gap-1.5">
+              {attendance.exceptions.slice(0, 8).map((entry) => (
+                <li
+                  key={entry.date}
+                  className="flex flex-wrap items-center gap-2 text-sm"
+                >
+                  <span className="font-mono text-xs text-muted tabular">
+                    {formatDayDate(entry.date)}
+                  </span>
+                  <Chip
+                    tone={
+                      entry.status === "sick"
+                        ? "danger"
+                        : entry.status === "leave"
+                          ? "lock"
+                          : entry.status === "working"
+                            ? "accent"
+                            : "neutral"
+                    }
+                  >
+                    {STATUS_LABEL[entry.status]}
+                  </Chip>
+                  {entry.date > today ? (
+                    <span className="text-xs text-muted">
+                      still to come, so not counted yet
+                    </span>
+                  ) : null}
+                  {entry.note ? (
+                    <span className="min-w-0 flex-1 truncate text-ink-2">
+                      {entry.note}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="mt-4 border-t border-line pt-3 text-sm text-muted">
+            Nothing out of the ordinary this month.
+          </p>
+        )}
       </Card>
 
       <div className="grid gap-5 xl:grid-cols-3">
@@ -313,12 +449,15 @@ export default async function AdminDashboard() {
                   <span className="min-w-0 flex-1 truncate font-semibold">
                     {meal.dish}
                   </span>
+                  {meal.forWhom ? (
+                    <Chip tone="accent">for {meal.forWhom}</Chip>
+                  ) : null}
                   {meal.prepTiming === "day_before" ? (
                     <Chip tone={meal.prepDone ? "ok" : "lock"}>
                       {meal.prepDone ? "Prepped" : "Prep missed"}
                     </Chip>
                   ) : (
-                    <Chip tone="accent">On the day</Chip>
+                    <Chip>On the day</Chip>
                   )}
                 </li>
               ))}
@@ -329,7 +468,8 @@ export default async function AdminDashboard() {
                 >
                   <span className="label w-14 flex-none">Prep</span>
                   <span className="min-w-0 flex-1 truncate font-semibold">
-                    {weekdayName(meal.date)}&apos;s {meal.slot}: {meal.dish}
+                    {weekdayName(meal.date)}&apos;s {meal.slot}
+                    {meal.forWhom ? ` for ${meal.forWhom}` : ""}: {meal.dish}
                   </span>
                   <Chip tone={meal.prepDone ? "ok" : "accent"}>
                     {meal.prepDone ? "Done" : "Day-before prep"}

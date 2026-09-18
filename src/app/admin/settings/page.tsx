@@ -10,6 +10,7 @@ import {
 import { Card, CardHeader, Chip } from "@/components/ui";
 import { householdEmployee, requireAdmin } from "@/lib/auth";
 import { formatDayDate, shiftDate, todayIn } from "@/lib/dates";
+import { STATUS_LABEL } from "@/lib/workday-constants";
 
 export const dynamic = "force-dynamic";
 
@@ -84,9 +85,20 @@ export default async function SettingsPage() {
               .sort((a, b) => (a.date < b.date ? -1 : 1))
               .map((override) => (
                 <li key={override.id}>
-                  <Chip tone={override.isWorking ? "accent" : "neutral"}>
+                  <Chip
+                    tone={
+                      override.status === "sick"
+                        ? "danger"
+                        : override.status === "leave"
+                          ? "lock"
+                          : override.status === "working"
+                            ? "accent"
+                            : "neutral"
+                    }
+                  >
                     {formatDayDate(override.date)} ·{" "}
-                    {override.isWorking ? "working" : "off"}
+                    {STATUS_LABEL[override.status].toLowerCase()}
+                    {override.note ? ` · ${override.note}` : ""}
                   </Chip>
                 </li>
               ))}

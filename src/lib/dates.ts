@@ -103,6 +103,17 @@ export function formatDayNumber(date: IsoDate): string {
   return format(parseISO(date), "d");
 }
 
+export function formatMonth(date: IsoDate): string {
+  return format(parseISO(date), "MMMM yyyy");
+}
+
+/** The last date of the month containing `date`. */
+export function endOfMonth(date: IsoDate): IsoDate {
+  const [year, month] = date.split("-").map(Number);
+  const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${date.slice(0, 7)}-${String(last).padStart(2, "0")}`;
+}
+
 export function weekdayName(date: IsoDate): string {
   return WEEKDAY_NAMES[isoWeekday(date) - 1];
 }

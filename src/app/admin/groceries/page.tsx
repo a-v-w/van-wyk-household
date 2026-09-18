@@ -17,7 +17,7 @@ import {
   Empty,
   IconLock,
 } from "@/components/ui";
-import { requireAdmin } from "@/lib/auth";
+import { firstName, householdEmployee, requireAdmin } from "@/lib/auth";
 import { formatDate, formatDayDate, shiftDate, todayIn } from "@/lib/dates";
 import {
   CATEGORY_LABEL,
@@ -39,6 +39,9 @@ export default async function AdminGroceriesPage() {
   const viewer = await requireAdmin();
   const { household } = viewer;
   const today = todayIn(household.timezone);
+
+  const employee = await householdEmployee(household.id);
+  const employeeName = employee ? firstName(employee) : null;
 
   const open = await currentCycle(household);
   const openView = await loadCycleView(open);
@@ -96,9 +99,21 @@ export default async function AdminGroceriesPage() {
             </div>
           </div>
 
-          <OrderProgress
-            items={orderView.items.map((i) => i.status)}
-          />
+          <OrderProgress items={orderView.items.map((i) => i.status)} />
+
+          <Card className="p-4">
+            <p className="label mb-2">
+              Forgot something? Add it to this list
+            </p>
+            <GroceryAddForm
+              cycleId={toOrder.id}
+              placeholder="Add to this order, e.g. Coffee"
+            />
+            <p className="mt-2 text-xs text-muted">
+              This list is locked to {employeeName ?? "the household"}, but not
+              to you. Use the pencil on any row to correct or remove it.
+            </p>
+          </Card>
 
           {orderView.items.length === 0 ? (
             <Card>
@@ -171,9 +186,11 @@ export default async function AdminGroceriesPage() {
                               note: item.note,
                               addedByName: item.addedByUser?.name ?? null,
                               addedByRole: item.addedByUser?.role ?? null,
+                              category: item.category,
                               carryCount: item.carryCount,
                               carriedReason: null,
                               canDelete: true,
+                              canEdit: true,
                             }}
                           />
                         ))}
@@ -197,9 +214,11 @@ export default async function AdminGroceriesPage() {
                             note: item.note,
                             addedByName: item.addedByUser?.name ?? null,
                             addedByRole: item.addedByUser?.role ?? null,
+                            category: item.category,
                             carryCount: 0,
                             carriedReason: null,
                             canDelete: true,
+                            canEdit: true,
                           }}
                         />
                       ))}
@@ -256,6 +275,7 @@ function toRow(
     name: item.name,
     quantity: item.quantity,
     note: item.note,
+    category: item.category,
     status: item.status,
     addedByName: item.addedByUser?.name ?? null,
     addedByRole: item.addedByUser?.role ?? null,

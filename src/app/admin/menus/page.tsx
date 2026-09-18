@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { MenuEditor, type MenuDay } from "@/components/menu-editor";
+import { MenuEditor, type MenuDay, type MenuEntry } from "@/components/menu-editor";
 import {
   IconChevronLeft,
   IconChevronRight,
@@ -18,6 +18,7 @@ import {
   type IsoDate,
 } from "@/lib/dates";
 import { loadMeals, type MealWithPrep } from "@/lib/meals";
+import { recipeOptions } from "@/lib/recipes";
 import { loadWorkdayCalendar } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
@@ -46,32 +47,35 @@ export default async function AdminMenusPage({
     week[6],
   );
   const meals = await loadMeals(household.id, monday, week[6], calendar);
+  const recipes = await recipeOptions(household.id);
 
-  function find(date: IsoDate, slot: "lunch" | "dinner"): MealWithPrep | undefined {
-    return meals.find((m) => m.date === date && m.slot === slot);
+  function entries(date: IsoDate, slot: "lunch" | "dinner"): MenuEntry[] {
+    return meals
+      .filter((m: MealWithPrep) => m.date === date && m.slot === slot)
+      .map((m) => ({
+        id: m.id,
+        dish: m.dish,
+        recipeId: m.recipeId,
+        forWhom: m.forWhom ?? "",
+        notes: m.notes ?? "",
+        prepTiming: m.prepTiming,
+      }));
   }
 
-  function cell(date: IsoDate, slot: "lunch" | "dinner") {
-    const meal = find(date, slot);
+  const days: MenuDay[] = week.map((date) => {
     const prepDate = calendar.previousWorkingDay(date);
     return {
-      dish: meal?.dish ?? "",
-      notes: meal?.notes ?? "",
-      timing: (meal?.prepTiming ?? "same_day") as "same_day" | "day_before",
+      date,
+      weekday: weekdayShort(date),
+      dayNumber: formatDayNumber(date),
+      working: calendar.isWorking(date),
+      isToday: date === today,
       prepLabel: `${weekdayShort(prepDate)} ${formatDayNumber(prepDate)}`,
-      rolledBack: prepDate !== shiftDate(date, -1),
+      prepRolledBack: prepDate !== shiftDate(date, -1),
+      lunch: entries(date, "lunch"),
+      dinner: entries(date, "dinner"),
     };
-  }
-
-  const days: MenuDay[] = week.map((date) => ({
-    date,
-    weekday: weekdayShort(date),
-    dayNumber: formatDayNumber(date),
-    working: calendar.isWorking(date),
-    isToday: date === today,
-    lunch: cell(date, "lunch"),
-    dinner: cell(date, "dinner"),
-  }));
+  });
 
   const thisMonday = startOfIsoWeek(today);
   const label =
@@ -113,15 +117,18 @@ export default async function AdminMenusPage({
       </header>
 
       <p className="max-w-2xl text-sm text-ink-2">
-        Mark a meal <strong className="font-semibold">day before</strong> and it
-        appears on the kitchen list the previous working day, so a Monday dinner
-        is prepped on Friday when nobody works the weekend.
+        A slot can hold more than one dish, so name who each is for when people
+        eat differently. Mark a dish{" "}
+        <strong className="font-semibold">day before</strong> and it appears on
+        the kitchen list the previous working day, so a Monday dinner is prepped
+        on Friday when nobody works the weekend.
       </p>
 
       <MenuEditor
         days={days}
         monday={monday}
         previousMonday={shiftDate(monday, -7)}
+        recipes={recipes}
       />
     </div>
   );

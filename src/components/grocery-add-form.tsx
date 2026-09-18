@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import {
   addGroceryItem,
+  addItemToCycle,
   type GroceryFormState,
 } from "@/app/actions/groceries";
 import { IconPlus, buttonClass, cn, inputClass } from "@/components/ui";
@@ -10,9 +11,18 @@ import { CATEGORIES, CATEGORY_LABEL } from "@/lib/grocery-constants";
 
 /** The add bar at the foot of the list. Stays focused so several items in a
  *  row are quick to type. */
-export function GroceryAddForm({ disabled }: { disabled?: boolean }) {
+export function GroceryAddForm({
+  disabled,
+  cycleId,
+  placeholder = "Add an item, e.g. Milk",
+}: {
+  disabled?: boolean;
+  /** Add straight onto this list instead of whichever one is open. */
+  cycleId?: number;
+  placeholder?: string;
+}) {
   const [state, action, pending] = useActionState<GroceryFormState, FormData>(
-    addGroceryItem,
+    cycleId ? addItemToCycle : addGroceryItem,
     undefined,
   );
   const formRef = useRef<HTMLFormElement>(null);
@@ -27,6 +37,9 @@ export function GroceryAddForm({ disabled }: { disabled?: boolean }) {
 
   return (
     <form ref={formRef} action={action} className="flex flex-col gap-2">
+      {cycleId ? (
+        <input type="hidden" name="cycleId" value={cycleId} />
+      ) : null}
       {/* The widths live on the wrappers: two width utilities on one input
           fight in the cascade and the loser collapses. */}
       <div className="flex gap-2">
@@ -37,7 +50,7 @@ export function GroceryAddForm({ disabled }: { disabled?: boolean }) {
             name="name"
             required
             disabled={disabled}
-            placeholder="Add an item, e.g. Milk"
+            placeholder={placeholder}
             className={inputClass}
             autoComplete="off"
           />

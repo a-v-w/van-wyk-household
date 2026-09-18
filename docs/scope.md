@@ -1,6 +1,8 @@
-# Nanny management app — scope (v1)
+# Household app — scope (v1)
 
-One household, two users. The **admin** (you) plans the week; the **employee** (the nanny) works from a phone and ticks things off. Four modules: tasks, menus, grocery list, reminders.
+One household, two users. The **admin** (you) plans the week; the **employee** works from a phone and ticks things off. Five areas: tasks, menus, recipes, the grocery list, and reminders.
+
+The employee is always referred to by their own name in the app itself. This document says "the employee" only because it is written before that name exists.
 
 This is a **web app**: it runs in the browser at one URL, on the phone and on the desktop, with no native app and no app store. Built on the existing Next.js 16 + Drizzle + Postgres scaffold, deployed manually to Vercel as already set up.
 
@@ -12,42 +14,57 @@ Assumptions are listed at the end. The two that matter most: the household timez
 
 ## 1. Users and roles
 
-Two fixed roles. No self-signup: the admin is seeded by a script, and the admin creates the nanny's account from Settings.
+Two fixed roles. No self-signup: the admin is seeded by a script, and the admin creates the employee's account from Settings.
 
 | Capability | Admin | Employee |
 | --- | --- | --- |
 | Log in (email + password) | ✓ | ✓ |
-| Create / edit / archive tasks | ✓ | – |
+| Create / edit / archive tasks, choose the assignee | ✓ | – |
 | Tick off own assigned tasks and prep items | ✓ | ✓ |
 | Tick off anyone's tasks | ✓ | – |
-| Mark weekend dates as working days | ✓ | – |
-| Create / edit weekly menus | ✓ | – |
-| View menus and prep instructions | ✓ | ✓ |
+| Record a day as worked, off, sick or on leave | ✓ | – |
+| Create / edit weekly menus and recipes | ✓ | – |
+| View menus, recipes and prep instructions | ✓ | ✓ |
 | Add grocery items while the list is open | ✓ | ✓ |
 | Edit / remove grocery items | any item | own items only |
-| Edit a locked grocery list, unlock, mark ordered | ✓ | – |
-| Manage the nanny's account, reset password | ✓ | – |
+| Edit any grocery list at any time, unlock, mark ordered | ✓ | – |
+| Manage the employee's account, reset password | ✓ | – |
 | Household settings (timezone, reminder time) | ✓ | – |
 
 **Auth recommendation:** Auth.js v5 with the Credentials provider and a JWT session cookie, passwords hashed with bcrypt. Two users do not justify a database session table. Every server action re-checks the role; the UI hiding a button is never the only guard.
 
 ---
 
-## 2. Working days
+## 2. Working days and attendance
 
-The nanny works **Monday to Friday** by default, and occasionally on a weekend day when asked.
+The employee works **Monday to Friday** by default, and occasionally on a weekend day when asked.
 
-- The household has a default working-day set (Mon–Fri).
-- The admin can mark any individual weekend date as a **working day**, from Settings or straight from the dashboard ("Working this Saturday"). It can be unmarked again.
-- The nanny's Today view on a non-working day shows a short "Not a working day" note. Anything the admin has explicitly dated on that day (a once-off task, a meal) still shows, because the admin chose the date on purpose.
-- Recurring tasks and day-before prep both respect working days, as described below.
+The admin records what actually happened on any single date, by clicking that day in the dashboard's week strip. A date can be:
+
+| Status | Meaning |
+| --- | --- |
+| **Worked** | A working day, including a Saturday she came in for. |
+| **Off** | Not working, no reason recorded. |
+| **Sick** | Off sick. Counted separately. |
+| **Leave** | Agreed leave or holiday. |
+
+Each record can carry a short note ("flu", "came in for the party"). Dates that follow the usual pattern have no record at all, so only real exceptions are stored.
+
+Only **Worked** counts as a working day, which means:
+
+- Recurring tasks set to "working days only" do not fire on a sick day or a day of leave, and do fire on a Saturday marked as worked.
+- Day-before meal prep lands on the last day that was actually worked.
+- The employee's Today view on a non-working day shows a short note. Anything the admin has explicitly dated on that day still shows, because the admin chose the date on purpose.
+
+### Tracking it
+The admin dashboard carries an **attendance** card for the current month: days worked, extra days worked outside the usual weekdays, sick days and days of leave, plus the list of dates that were different with their notes. Counts stop at today, so a part-finished month does not read as a full one; a future exception is listed but marked as not yet counted.
 
 ---
 
 ## 3. Tasks
 
 ### Assignees
-Every task has an **assignee**: the nanny or you. New tasks default to the nanny. Each person's Today view shows only their own tasks; the admin's dashboard shows both. The admin can tick anyone's task; the nanny can tick only her own.
+Every task has an **assignee**: the employee or you. New tasks default to the employee. Each person's Today view shows only their own tasks; the admin's dashboard shows both. The admin can tick anyone's task; everyone else only their own.
 
 ### Once-off tasks
 Title, optional notes, due date, optional time, assignee.
@@ -83,28 +100,41 @@ Occurrences are **computed from the rule when a date range is displayed**, not p
 
 ---
 
-## 4. Menus
+## 4. Menus and recipes
 
 A week runs Monday to Sunday with two slots per day: **lunch** and **dinner**.
 
-Each slot has:
-- dish name
-- optional notes (recipe link, portions, who eats what)
+**A slot holds as many dishes as it needs.** Households often eat differently at the same sitting, so each dish can name who it is for ("Emma", "the grown-ups"); a dish with nobody named is for everyone. Free text rather than a list of accounts, because children do not have logins.
+
+**A slot with nothing planned does not appear at all.** No empty rows, no "not set" placeholders: if only lunch was planned, only lunch shows.
+
+Each dish has:
+- a name
+- optional notes
+- an optional **recipe**
 - **prep timing**: `on the day` or `day before`
 
+### Recipes
+The household keeps its own cookbook, written by the admin: name, one-line summary, servings, time, ingredients (one per line) and a method. An outside link can stand in when the recipe lives on a website.
+
+- Attaching a recipe to a dish puts a **Recipe** link on that meal wherever it appears.
+- The employee also gets a **Recipes** tab: the whole cookbook, browsable on its own.
+- The method is numbered automatically from its paragraphs, so it reads as steps in the kitchen.
+- Recipes are archived rather than deleted, and a meal that pointed at a deleted one simply loses the link.
+
 ### Admin
-- Week editor: a 7 × 2 grid, edit in place.
+- Week editor: seven days, each with a lunch and a dinner list. Add or remove dishes in place.
 - **Copy last week** to start from something rather than blank.
 - Can plan next week ahead of time; current and next week are both visible.
 
 ### Employee
 - Menu view for this week and next.
-- Prep items appear on the nanny's **Today** checklist alongside tasks:
+- Prep items appear on the **Today** checklist alongside tasks:
   - `day before` meals show on the previous day as "Prep tomorrow's dinner: lasagne".
   - `on the day` meals show on the day itself as "Make lunch: toasties".
 - Ticking a prep item is stored like a task completion, so you can see it was done.
 
-**Day-before prep on a non-working day** rolls back to the nanny's last working day. A Monday dinner marked `day before` becomes a Friday prep item, unless the admin has marked that Saturday or Sunday as a working day, in which case it lands there. The prep item says which meal it is for ("Prep Monday's dinner: lasagne") so the roll-back is never confusing.
+**Day-before prep on a non-working day** rolls back to the last day actually worked. A Monday dinner marked `day before` becomes a Friday prep item, unless the admin has marked that Saturday or Sunday as a working day, in which case it lands there. The prep item says which meal it is for ("Prep Monday's dinner: lasagne") so the roll-back is never confusing.
 
 ---
 
@@ -117,7 +147,7 @@ The list runs in weekly **cycles** tied to the Monday you order on. A cycle:
 - **locks** the following Friday at 18:00 household time,
 - is **ordered** by you on the Monday after locking.
 
-Anything added after Friday 18:00 automatically lands on the next cycle, so the nanny never has to "create a new list". The lock is enforced on the server by comparing the current time against the cycle's lock time, not by a scheduled job, so it cannot be missed.
+Anything added after Friday 18:00 automatically lands on the next cycle, so nobody ever has to "create a new list". The lock is enforced on the server by comparing the current time against the cycle's lock time, not by a scheduled job, so it cannot be missed.
 
 ### Items
 Name, free-text quantity ("2 kg", "3 packs"), optional category (fresh, pantry, household, baby, other), optional note, who added it.
@@ -129,7 +159,7 @@ Once locked, the admin works through the list and gives each item one of three o
 | --- | --- |
 | **Ordered** | Ticked. Done. |
 | **Out of stock / couldn't buy** | The item is marked unavailable and **moved to the next cycle** in one tap. It keeps its quantity and note, and shows a "carried over" badge on the new list. A later cycle can be chosen instead of the next one. |
-| **Not needed** | Removed from the list with a reason, so the nanny can see it was seen and dropped rather than forgotten. |
+| **Not needed** | Removed from the list with a reason, so the employee can see it was seen and dropped rather than forgotten. |
 
 When every item has an outcome, the cycle is marked ordered.
 
@@ -139,8 +169,9 @@ When every item has an outcome, the cycle is marked ordered.
 - If an item is carried over a second time, it shows the count ("carried twice") so a chronically unavailable item gets substituted rather than rolled forever.
 
 ### Rules
-- Open cycle: both users add; the nanny edits and removes only her own items; the admin edits anything.
-- Locked cycle: read-only for the nanny. The admin can still edit, and can **unlock** a cycle (an override flag) if the lock was premature.
+- **The admin can change any list at any time**, locked or not: add an item, rename it, change the quantity or aisle, or remove it. Every row carries a pencil, and the locked list has its own add box.
+- Open cycle: both users add; the employee edits and removes only her own items.
+- Locked cycle: read-only for the employee. The admin can also **unlock** a cycle outright if the lock was premature.
 - Moving an item to a later cycle is admin-only and works on locked and open cycles alike.
 - Past cycles are kept and viewable by the admin, so you can see what was bought, what was unavailable and what was dropped in previous weeks.
 - **Copy as text**: a one-tap export of the locked list as plain lines, for pasting into whichever shop app you order from.
@@ -173,17 +204,19 @@ Push notifications and WhatsApp are out of scope for v1. The reminder time is a 
 **Employee (mobile-first, the primary surface)**
 1. **Today** — her tasks, prep items, today's lunch and dinner, grocery banner on Fridays. This is the home screen.
 2. **Tasks** — this week ahead.
-3. **Menu** — this week and next.
+3. **Menu** — this week and next, with a recipe link on any dish that has one.
+4. **Recipes** — the household cookbook.
 4. **Groceries** — current cycle, add item, lock countdown.
 
 **Admin**
 1. **Dashboard** — this week at a glance: what was ticked, what was missed, per person; grocery cycle status; your own tasks for today; "working this weekend" toggle.
 2. **Tasks** — manage recurring and once-off tasks, filter by assignee; completion history.
-3. **Menus** — week editor with copy-last-week.
-4. **Groceries** — current cycle, past cycles, order outcomes (ordered / out of stock / not needed), carry-over, copy-as-text, unlock.
-5. **Settings** — nanny account, default working days, extra working dates, timezone, reminder time, notification emails.
+3. **Menus** — week editor with copy-last-week, several dishes per slot, and a recipe picker.
+4. **Recipes** — write and edit the cookbook.
+5. **Groceries** — current cycle, past cycles, order outcomes (ordered / out of stock / not needed), carry-over, copy-as-text, unlock, and full editing of any list at any time.
+6. **Settings** — the employee's account, default working days, recorded exceptions, timezone, reminder time, notification emails.
 
-The nanny opens the same URL in her phone's browser. A web manifest lets her add it to the home screen so it opens without browser chrome, but it is still the website; there is nothing to install from a store.
+The employee opens the same URL in their phone's browser. A web manifest lets them add it to the home screen so it opens without browser chrome, but it is still the website; there is nothing to install from a store.
 
 ---
 
@@ -195,11 +228,12 @@ All tables hang off the existing `households` table. Timestamps are `timestamptz
 | --- | --- | --- |
 | `households` | exists | add `timezone`, `working_weekdays[]` (default Mon–Fri), `grocery_lock_weekday`, `grocery_lock_time`, `reminder_time` |
 | `users` | both people | `household_id`, `name`, `email`, `password_hash`, `role` (`admin` / `employee`) |
-| `workday_overrides` | a weekend date marked working (or a weekday marked off) | `household_id`, `date`, `is_working`, `note`; unique on `(household_id, date)` |
+| `workday_overrides` | a date that differed from the usual pattern | `household_id`, `date`, `status` (`working` / `off` / `sick` / `leave`), `note`, `recorded_by`; unique on `(household_id, date)` |
 | `tasks` | once-off and recurring | `title`, `notes`, `kind` (`once` / `recurring`), `due_date`, `frequency` (`daily` / `weekly` / `monthly`), `working_days_only`, `interval`, `weekdays[]`, `month_day`, `start_date`, `end_date`, `time_of_day`, `assigned_to` (user), `created_by`, `archived_at` |
 | `task_completions` | one row per tick | `task_id`, `occurrence_date`, `completed_by`, `completed_at`; unique on `(task_id, occurrence_date)` |
 | `task_skips` | admin skipped a single date | `task_id`, `occurrence_date` |
-| `meals` | one row per slot per day | `date`, `slot` (`lunch` / `dinner`), `dish`, `notes`, `prep_timing` (`same_day` / `day_before`); unique on `(household_id, date, slot)` |
+| `recipes` | the household cookbook | `title`, `summary`, `servings`, `prep_minutes`, `ingredients`, `method`, `source_url`, `archived_at` |
+| `meals` | one row per dish; a slot can hold several | `date`, `slot` (`lunch` / `dinner`), `dish`, `for_whom`, `recipe_id`, `notes`, `prep_timing` (`same_day` / `day_before`), `sort_order` |
 | `meal_completions` | prep or cooking ticked | `meal_id`, `completed_by`, `completed_at` |
 | `grocery_cycles` | one per ordering Monday | `order_date`, `locks_at`, `unlocked_by_admin`, `ordered_at` |
 | `grocery_items` | list lines | `cycle_id`, `name`, `quantity`, `category`, `note`, `added_by`, `status` (`pending` / `ordered` / `unavailable` / `dropped`), `carried_from_item_id`, `carry_count`, `resolved_at` |
@@ -222,9 +256,9 @@ Each table lands as a committed migration per the repo convention.
 
 ## 10. Out of scope for v1
 
-- More than one nanny or more than one household in the UI (the schema allows it; the screens do not).
+- More than one employee or more than one household in the UI (the schema allows it; the screens do not).
 - Hours, leave, payroll.
-- Recipes and automatic ingredient-to-grocery generation.
+- Turning a recipe's ingredients into grocery items automatically.
 - Staple items that auto-add every week (small, good candidate for v1.1).
 - Native iOS / Android apps, push notifications, WhatsApp, SMS.
 - Child profiles, medical or emergency info.
@@ -254,20 +288,24 @@ Phase 3 can run in parallel with 1 and 2.
 Settled:
 
 - **Working days** are Mon–Fri, with individual weekend dates the admin can mark as working.
-- **Tasks have assignees**: the nanny or the admin. Default is the nanny.
+- **Tasks have assignees**: the employee or the admin. Default is the employee.
 - **Web app only**: browser on phone and desktop, no native app.
+- **A slot can hold several dishes**, each optionally named for a person; empty slots never show.
+- **Attendance** is tracked per date as worked, off, sick or leave, and summarised monthly on the dashboard.
+- **The admin can edit any grocery list at any time**, locked or not.
+- **Recipes** are a first-class area, linkable from any dish.
 
 Decisions I have made that you can overturn:
 
 1. **Timezone** is Africa/Johannesburg. Stored as a household setting.
-2. **Reminder channel** is email plus in-app banner. If the nanny does not use email, the banner alone still works, and WhatsApp can be added later.
-3. **Reminder time** is Friday 09:00 for the nanny and Monday 09:00 for you.
+2. **Reminder channel** is email plus in-app banner. If the employee does not use email, the banner alone still works, and WhatsApp can be added later.
+3. **Reminder time** is Friday 09:00 for the employee and Monday 09:00 for you.
 4. **One order per week**, placed on Monday. The cycle model assumes this.
 5. **Menus cover lunch and dinner only.** Breakfast is not a slot.
-6. **The nanny can unlock nothing.** Only the admin can edit after Friday 18:00.
+6. **The employee can unlock nothing.** Only the admin can edit after Friday 18:00.
 7. **Day-before prep on a non-working day rolls back** to the last working day rather than being dropped.
 
 Questions I could not settle from the brief:
 
-8. **Should the nanny see next week's menu**, or only the current week? Assumed yes, so she can prep on Friday for Monday if needed.
+8. **Should the employee see next week's menu**, or only the current week? Assumed yes, so prep can happen on Friday for Monday if needed.
 9. **Should ticked tasks be editable the next day?** Assumed no: a completion can be undone on the same day only, to keep the history honest.

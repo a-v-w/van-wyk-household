@@ -94,6 +94,7 @@ export default async function GroceriesPage() {
                     note: item.note,
                     addedByName: item.addedByUser?.name ?? null,
                     addedByRole: item.addedByUser?.role ?? null,
+                    category: item.category,
                     carryCount: item.carryCount,
                     carriedReason:
                       item.carryCount > 1
@@ -132,6 +133,7 @@ export default async function GroceriesPage() {
                       note: item.note,
                       addedByName: item.addedByUser?.name ?? null,
                       addedByRole: item.addedByUser?.role ?? null,
+                      category: item.category,
                       carryCount: 0,
                       carriedReason: null,
                       canDelete: view.isOpen && item.addedBy === user.id,

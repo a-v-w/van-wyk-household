@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { LockBanner } from "@/components/lock-banner";
 import { PrepRow, TaskRow } from "@/components/task-list";
-import { Card, Chip, Empty, IconCalendar } from "@/components/ui";
+import { Card, Chip, Empty, IconBook, IconCalendar } from "@/components/ui";
 import { requireViewer } from "@/lib/auth";
 import {
   formatLongDate,
@@ -145,7 +146,9 @@ export default async function TodayPage() {
                   key={meal.id}
                   row={{
                     mealId: meal.id,
-                    title: `Prep ${weekdayName(meal.date).toLowerCase()}'s ${meal.slot}: ${meal.dish}`,
+                    title: `Prep ${weekdayName(meal.date).toLowerCase()}'s ${meal.slot}${
+                      meal.forWhom ? ` for ${meal.forWhom}` : ""
+                    }: ${meal.dish}`,
                     notes: meal.notes,
                     done: meal.prepDone,
                     chip: `For ${relativeDay(meal.date, today).toLowerCase()}`,
@@ -161,48 +164,67 @@ export default async function TodayPage() {
         </section>
       ) : null}
 
-      <section className="flex flex-col gap-2">
-        <h2 className="label px-1">Meals today</h2>
-        <Card>
-          {kitchen.today.length === 0 ? (
-            <Empty title="No menu set for today" />
-          ) : (
-            <ul>
-              {kitchen.today.map((meal) => (
-                <li
-                  key={meal.id}
-                  className="flex items-start gap-3 border-b border-line px-4 py-3.5 last:border-b-0"
-                >
-                  <span className="label w-14 flex-none pt-0.5">
-                    {SLOT_LABEL[meal.slot]}
-                  </span>
-                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                    <span className="text-[15px] leading-snug font-bold">
-                      {meal.dish}
-                    </span>
-                    {meal.notes ? (
-                      <span className="text-[13px] leading-snug text-ink-2">
-                        {meal.notes}
-                      </span>
-                    ) : null}
-                    <div className="flex flex-wrap gap-1.5">
-                      {meal.prepTiming === "day_before" ? (
-                        <Chip tone={meal.prepDone ? "ok" : "lock"}>
-                          {meal.prepDone
-                            ? "Prepped in advance"
-                            : "Should have been prepped"}
-                        </Chip>
-                      ) : (
-                        <Chip tone="accent">Make on the day</Chip>
-                      )}
-                    </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </section>
+      {/* Only slots with something in them appear, so an unplanned lunch is
+          simply absent rather than an empty row. */}
+      {kitchen.todayBySlot.length > 0 ? (
+        <section className="flex flex-col gap-2">
+          <h2 className="label px-1">Meals today</h2>
+          <Card>
+            {kitchen.todayBySlot.map((group) => (
+              <div
+                key={group.slot}
+                className="border-b border-line last:border-b-0"
+              >
+                <div className="label px-4 pt-3 pb-1">
+                  {SLOT_LABEL[group.slot]}
+                </div>
+                <ul>
+                  {group.entries.map((meal) => (
+                    <li
+                      key={meal.id}
+                      className="flex flex-col gap-1 px-4 pt-1 pb-3.5"
+                    >
+                      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <span className="text-[15px] leading-snug font-bold">
+                          {meal.dish}
+                        </span>
+                        {meal.forWhom ? (
+                          <Chip tone="accent">for {meal.forWhom}</Chip>
+                        ) : null}
+                      </div>
+                      {meal.notes ? (
+                        <span className="text-[13px] leading-snug text-ink-2">
+                          {meal.notes}
+                        </span>
+                      ) : null}
+                      {meal.recipeId ? (
+                        <Link
+                          href={`/recipes/${meal.recipeId}`}
+                          className="inline-flex items-center gap-1 self-start rounded-full border border-accent-line bg-accent-soft px-2.5 py-0.5 text-xs font-bold text-accent"
+                        >
+                          <IconBook size={13} />
+                          Recipe
+                          </Link>
+                        ) : null}
+                      <div className="flex flex-wrap gap-1.5">
+                        {meal.prepTiming === "day_before" ? (
+                          <Chip tone={meal.prepDone ? "ok" : "lock"}>
+                            {meal.prepDone
+                              ? "Prepped in advance"
+                              : "Should have been prepped"}
+                          </Chip>
+                        ) : (
+                          <Chip>Make on the day</Chip>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </Card>
+        </section>
+      ) : null}
 
     </div>
   );

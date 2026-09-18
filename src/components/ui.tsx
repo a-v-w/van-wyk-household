@@ -286,6 +286,18 @@ export const IconTrash = icon(
   </>,
 );
 export const IconArrowRight = icon(<path d="M5 12h14M13 6l6 6-6 6" />);
+export const IconPencil = icon(
+  <>
+    <path d="M4 20h4l10.5-10.5a2.1 2.1 0 0 0-3-3L5 17v3z" />
+    <path d="M13.5 6.5l4 4" />
+  </>,
+);
+export const IconBook = icon(
+  <>
+    <path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z" />
+    <path d="M8 7h7M8 11h7" />
+  </>,
+);
 export const IconChevronLeft = icon(<path d="M15 6l-6 6 6 6" />);
 export const IconChevronRight = icon(<path d="M9 6l6 6-6 6" />);
 export const IconCalendar = icon(

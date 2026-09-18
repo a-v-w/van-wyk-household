@@ -15,6 +15,34 @@
       "when": 1789714908750,
       "tag": "0001_household_app",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789716043042,
+      "tag": "0002_meals_per_person",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789716224514,
+      "tag": "0003_workday_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789716234190,
+      "tag": "0004_drop_is_working",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789716412139,
+      "tag": "0005_recipes",
+      "breakpoints": true
     }
   ]
 }

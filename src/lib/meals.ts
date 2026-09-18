@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, gte, inArray, lte } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, lte, notInArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
   mealCompletions,
@@ -21,6 +21,13 @@ export type MealWithPrep = Meal & {
   rolledBack: boolean;
 };
 
+/** One slot of one day, with however many dishes it holds. */
+export type SlotEntries = {
+  date: IsoDate;
+  slot: MealSlot;
+  entries: MealWithPrep[];
+};
+
 export const SLOTS: MealSlot[] = ["lunch", "dinner"];
 
 export const SLOT_LABEL: Record<MealSlot, string> = {
@@ -33,6 +40,12 @@ export const PREP_LABEL: Record<PrepTiming, string> = {
   day_before: "Day before",
 };
 
+/** "Lunch for Emma", or just "Lunch" when it is for the whole house. */
+export function mealLabel(meal: Pick<Meal, "slot" | "forWhom">): string {
+  const who = meal.forWhom?.trim();
+  return who ? `${SLOT_LABEL[meal.slot]} for ${who}` : SLOT_LABEL[meal.slot];
+}
+
 /**
  * Where a meal's work lands. "On the day" is the meal's own date. "Day before"
  * is the previous *working* day, so a Monday dinner prepped in advance shows up
@@ -43,7 +56,11 @@ export function prepDateFor(meal: Meal, calendar: WorkdayCalendar): IsoDate {
   return calendar.previousWorkingDay(meal.date);
 }
 
-function decorate(meal: Meal, calendar: WorkdayCalendar, done: Map<number, Date>): MealWithPrep {
+function decorate(
+  meal: Meal,
+  calendar: WorkdayCalendar,
+  done: Map<number, Date>,
+): MealWithPrep {
   const prepDate = prepDateFor(meal, calendar);
   const completedAt = done.get(meal.id) ?? null;
   return {
@@ -64,7 +81,7 @@ async function completionsFor(mealIds: number[]): Promise<Map<number, Date>> {
   return new Map(rows.map((r) => [r.mealId, r.completedAt]));
 }
 
-/** Every meal in a date range, decorated with its prep date. */
+/** Every dish in a date range, decorated with its prep date. */
 export async function loadMeals(
   householdId: number,
   from: IsoDate,
@@ -77,20 +94,40 @@ export async function loadMeals(
       gte(meals.date, from),
       lte(meals.date, to),
     ),
+    orderBy: [asc(meals.date), asc(meals.sortOrder), asc(meals.id)],
   });
   const done = await completionsFor(rows.map((r) => r.id));
   return rows.map((meal) => decorate(meal, calendar, done));
 }
 
 /**
- * What the kitchen owes on one day: the meals eaten that day, plus any
+ * Groups a day's dishes by slot, dropping slots with nothing in them so an
+ * empty lunch never shows up as a blank row.
+ */
+export function groupBySlot(
+  dishes: MealWithPrep[],
+  date: IsoDate,
+): SlotEntries[] {
+  return SLOTS.map((slot) => ({
+    date,
+    slot,
+    entries: dishes.filter((m) => m.date === date && m.slot === slot),
+  })).filter((group) => group.entries.length > 0);
+}
+
+/**
+ * What the kitchen owes on one day: the dishes eaten that day, plus any
  * day-before prep for a later meal that lands on this date.
  */
 export async function loadDayKitchen(
   householdId: number,
   date: IsoDate,
   calendar: WorkdayCalendar,
-): Promise<{ today: MealWithPrep[]; prepAhead: MealWithPrep[] }> {
+): Promise<{
+  today: MealWithPrep[];
+  todayBySlot: SlotEntries[];
+  prepAhead: MealWithPrep[];
+}> {
   // Look far enough forward to catch prep rolled back over a long weekend.
   const window = await loadMeals(
     householdId,
@@ -98,57 +135,88 @@ export async function loadDayKitchen(
     shiftDate(date, 14),
     calendar,
   );
+  const today = window.filter((m) => m.date === date);
+
   return {
-    today: window
-      .filter((m) => m.date === date)
-      .sort((a, b) => SLOTS.indexOf(a.slot) - SLOTS.indexOf(b.slot)),
+    today,
+    todayBySlot: groupBySlot(today, date),
     prepAhead: window
       .filter((m) => m.date !== date && m.prepDate === date)
       .sort((a, b) => (a.date < b.date ? -1 : 1)),
   };
 }
 
-/** Creates or updates one slot of one day. An empty dish clears the slot. */
-export async function setMeal(
+/* ------------------------------------------------------------------ writes -- */
+
+export type SlotEntryInput = {
+  /** An existing row to update, or null to create one. */
+  id: number | null;
+  dish: string;
+  recipeId: number | null;
+  forWhom: string;
+  notes: string;
+  prepTiming: PrepTiming;
+};
+
+/**
+ * Makes one slot of one day match the list it is given. Entries with an empty
+ * dish are dropped, and anything previously in the slot that is not in the list
+ * is deleted — so clearing a field really does remove the meal.
+ */
+export async function replaceSlot(
   householdId: number,
   date: IsoDate,
   slot: MealSlot,
-  dish: string,
-  notes: string | null,
-  prepTiming: PrepTiming,
+  entries: SlotEntryInput[],
 ): Promise<void> {
-  const trimmed = dish.trim();
+  const wanted = entries
+    .map((entry) => ({
+      ...entry,
+      dish: entry.dish.trim(),
+      forWhom: entry.forWhom.trim(),
+      notes: entry.notes.trim(),
+    }))
+    .filter((entry) => entry.dish.length > 0);
 
-  if (!trimmed) {
-    await db
-      .delete(meals)
-      .where(
-        and(
-          eq(meals.householdId, householdId),
-          eq(meals.date, date),
-          eq(meals.slot, slot),
-        ),
-      );
-    return;
-  }
+  const keepIds = wanted
+    .map((entry) => entry.id)
+    .filter((id): id is number => typeof id === "number");
+
+  const slotFilter = and(
+    eq(meals.householdId, householdId),
+    eq(meals.date, date),
+    eq(meals.slot, slot),
+  );
 
   await db
-    .insert(meals)
-    .values({
-      householdId,
-      date,
-      slot,
-      dish: trimmed,
-      notes: notes?.trim() || null,
-      prepTiming,
-    })
-    .onConflictDoUpdate({
-      target: [meals.householdId, meals.date, meals.slot],
-      set: { dish: trimmed, notes: notes?.trim() || null, prepTiming },
-    });
+    .delete(meals)
+    .where(
+      keepIds.length > 0
+        ? and(slotFilter, notInArray(meals.id, keepIds))
+        : slotFilter,
+    );
+
+  for (const [index, entry] of wanted.entries()) {
+    const values = {
+      dish: entry.dish,
+      recipeId: entry.recipeId,
+      forWhom: entry.forWhom || null,
+      notes: entry.notes || null,
+      prepTiming: entry.prepTiming,
+      sortOrder: index,
+    };
+
+    if (entry.id) {
+      await db.update(meals).set(values).where(
+        and(eq(meals.id, entry.id), slotFilter),
+      );
+    } else {
+      await db.insert(meals).values({ householdId, date, slot, ...values });
+    }
+  }
 }
 
-/** Ticks or unticks a meal's cooking/prep. */
+/** Ticks or unticks one dish's cooking or prep. */
 export async function setMealDone(
   mealId: number,
   done: boolean,
@@ -164,7 +232,7 @@ export async function setMealDone(
   await db.delete(mealCompletions).where(eq(mealCompletions.mealId, mealId));
 }
 
-/** Copies a whole week's menu onto another week, overwriting what is there. */
+/** Copies a whole week's menu onto another week, replacing what is there. */
 export async function copyWeek(
   householdId: number,
   fromMonday: IsoDate,
@@ -176,22 +244,35 @@ export async function copyWeek(
       gte(meals.date, fromMonday),
       lte(meals.date, shiftDate(fromMonday, 6)),
     ),
+    orderBy: [asc(meals.date), asc(meals.sortOrder), asc(meals.id)],
   });
-  if (source.length === 0) return 0;
 
   const offset = Math.round(
     (Date.parse(toMonday) - Date.parse(fromMonday)) / 86_400_000,
   );
 
-  for (const meal of source) {
-    await setMeal(
-      householdId,
-      shiftDate(meal.date, offset),
-      meal.slot,
-      meal.dish,
-      meal.notes,
-      meal.prepTiming,
-    );
+  for (let day = 0; day < 7; day++) {
+    const sourceDate = shiftDate(fromMonday, day);
+    const targetDate = shiftDate(sourceDate, offset);
+
+    for (const slot of SLOTS) {
+      await replaceSlot(
+        householdId,
+        targetDate,
+        slot,
+        source
+          .filter((m) => m.date === sourceDate && m.slot === slot)
+          .map((m) => ({
+            id: null,
+            dish: m.dish,
+            recipeId: m.recipeId,
+            forWhom: m.forWhom ?? "",
+            notes: m.notes ?? "",
+            prepTiming: m.prepTiming,
+          })),
+      );
+    }
   }
+
   return source.length;
 }

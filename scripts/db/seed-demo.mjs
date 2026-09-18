@@ -38,6 +38,7 @@ const todayIso = iso(today);
 const isoDay = (s) => { const d = new Date(s + "T00:00:00Z").getUTCDay(); return d === 0 ? 7 : d; };
 let monday = todayIso; while (isoDay(monday) !== 1) monday = shift(monday, -1);
 
+await q("delete from recipes where household_id=$1", [hh.id]);
 await q("delete from tasks where household_id=$1", [hh.id]);
 await q("delete from meals where household_id=$1", [hh.id]);
 
@@ -79,16 +80,59 @@ const menu = [
   [4, "lunch", "Toasted sandwiches", null, "same_day"],
   [4, "dinner", "Pizza night", "Dough from the freezer.", "same_day"],
 ];
+const lasagne = (await q(
+  "insert into recipes (household_id,title,summary,servings,prep_minutes,ingredients,method,created_by) values ($1,$2,$3,$4,$5,$6,$7,$8) returning id",
+  [
+    hh.id,
+    "Lasagne",
+    "Assembles the day before, bakes in 35 minutes",
+    "4 to 6",
+    60,
+    [
+      "1 kg beef mince",
+      "2 onions, finely chopped",
+      "2 tins chopped tomatoes",
+      "250 g lasagne sheets",
+      "500 ml white sauce",
+      "200 g grated cheddar",
+    ].join("\n"),
+    [
+      "Heat the oven to 180 degrees.",
+      "Fry the onions until soft, then add the mince and brown it all over.",
+      "Stir in the tomatoes, season, and simmer for twenty minutes until thick.",
+      "Layer mince, sheets and white sauce twice, finishing with sauce and cheese.",
+      "Cover and refrigerate if making it the day before. Bake 35 minutes.",
+    ].join("\n\n"),
+    admin.id,
+  ]
+)).rows[0];
+
 for (const week of [0, 7]) {
   for (const [offset, slot, dish, notes, timing] of menu) {
     await q(
-      `insert into meals (household_id,date,slot,dish,notes,prep_timing) values ($1,$2,$3,$4,$5,$6)
-       on conflict (household_id,date,slot) do update set dish=excluded.dish, notes=excluded.notes, prep_timing=excluded.prep_timing`,
-      [hh.id, shift(monday, offset + week), slot, dish, notes, timing]
+      `insert into meals (household_id,date,slot,dish,notes,prep_timing,recipe_id,sort_order) values ($1,$2,$3,$4,$5,$6,$7,0)`,
+      [hh.id, shift(monday, offset + week), slot, dish, notes, timing, dish === "Lasagne" ? lasagne.id : null]
     );
   }
+  // Friday lunch shows three different plates; Saturday shows a slot left empty.
+  const fri = shift(monday, 4 + week);
+  const sat = shift(monday, 5 + week);
+  const plates = [
+    ["Chicken mayo sandwiches", "Emma", "Crusts off.", 1],
+    ["Pasta salad", "Liam", "No tomato.", 2],
+  ];
+  for (const [dish, forWhom, note, order] of plates) {
+    await q(
+      "insert into meals (household_id,date,slot,dish,for_whom,notes,prep_timing,sort_order) values ($1,$2,'lunch',$3,$4,$5,'same_day',$6)",
+      [hh.id, fri, dish, forWhom, note, order]
+    );
+  }
+  await q(
+    "insert into meals (household_id,date,slot,dish,notes,prep_timing,sort_order) values ($1,$2,'lunch',$3,$4,'same_day',0)",
+    [hh.id, sat, "Toasties", "Everyone eats out tonight, so no dinner is planned."]
+  );
 }
-console.log("menu seeded");
+console.log("menu and recipe seeded");
 
 // grocery: a previous locked cycle with items, ready to order
 function nextWeekday(from, wd) { let d = from; do { d = shift(d, 1); } while (isoDay(d) !== wd); return d; }

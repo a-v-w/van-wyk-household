@@ -43,6 +43,18 @@ export const notificationKind = pgEnum("notification_kind", [
   "admin_order_reminder",
 ]);
 
+/**
+ * What happened on a single date, when it differs from the usual pattern.
+ * `working` is the only one that counts as a working day; the rest are ways of
+ * being away, kept apart so sick days can be counted separately from leave.
+ */
+export const workdayStatus = pgEnum("workday_status", [
+  "working",
+  "sick",
+  "leave",
+  "off",
+]);
+
 /* ----------------------------------------------------------- households -- */
 
 export const households = pgTable("households", {
@@ -87,7 +99,11 @@ export const users = pgTable(
 
 /* --------------------------------------------------- workday overrides --- */
 
-/** A single date that departs from the household's default working weekdays. */
+/**
+ * A single date that departs from the household's default working weekdays:
+ * a Saturday that was worked, a weekday off sick, a day of leave. Dates that
+ * follow the usual pattern have no row.
+ */
 export const workdayOverrides = pgTable(
   "workday_overrides",
   {
@@ -96,8 +112,11 @@ export const workdayOverrides = pgTable(
       .notNull()
       .references(() => households.id, { onDelete: "cascade" }),
     date: date("date").notNull(),
-    isWorking: boolean("is_working").notNull(),
+    status: workdayStatus("status").notNull().default("off"),
     note: text("note"),
+    recordedBy: integer("recorded_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -187,6 +206,43 @@ export const taskSkips = pgTable(
 
 /* ---------------------------------------------------------------- meals -- */
 
+/**
+ * The household's own cookbook. A meal can point at one of these so the person
+ * cooking has the method to hand rather than being told a dish name.
+ */
+export const recipes = pgTable(
+  "recipes",
+  {
+    id: serial("id").primaryKey(),
+    householdId: integer("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    /** A short line for the list, e.g. "Freezes well, feeds four". */
+    summary: text("summary"),
+    servings: text("servings"),
+    prepMinutes: smallint("prep_minutes"),
+    /** One ingredient per line, kept as text so quantities stay free-form. */
+    ingredients: text("ingredients"),
+    method: text("method"),
+    /** An outside link, for when the recipe lives somewhere else. */
+    sourceUrl: text("source_url"),
+    createdBy: integer("created_by").references(() => users.id, {
+      onDelete: "set null",
+    }),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("recipes_household_idx").on(t.householdId)],
+);
+
+/**
+ * One dish. A slot can hold several of them, because a household often eats
+ * different lunches on the same day — so each row can say who it is for.
+ * An empty slot has no rows at all, which is why nothing shows for it.
+ */
 export const meals = pgTable(
   "meals",
   {
@@ -197,14 +253,22 @@ export const meals = pgTable(
     date: date("date").notNull(),
     slot: mealSlot("slot").notNull(),
     dish: text("dish").notNull(),
+    /** The recipe to follow, when one has been written down. */
+    recipeId: integer("recipe_id").references(() => recipes.id, {
+      onDelete: "set null",
+    }),
+    /** Free text, e.g. "Emma" or "the grown-ups". Empty means everyone. */
+    forWhom: text("for_whom"),
     notes: text("notes"),
     prepTiming: prepTiming("prep_timing").notNull().default("same_day"),
+    /** Order within the slot, as the admin arranged it. */
+    sortOrder: smallint("sort_order").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
   (t) => [
-    unique("meals_household_date_slot_unique").on(t.householdId, t.date, t.slot),
+    index("meals_household_date_idx").on(t.householdId, t.date),
     index("meals_date_idx").on(t.date),
   ],
 );
@@ -354,10 +418,22 @@ export const taskSkipsRelations = relations(taskSkips, ({ one }) => ({
   task: one(tasks, { fields: [taskSkips.taskId], references: [tasks.id] }),
 }));
 
+export const recipesRelations = relations(recipes, ({ one, many }) => ({
+  household: one(households, {
+    fields: [recipes.householdId],
+    references: [households.id],
+  }),
+  meals: many(meals),
+}));
+
 export const mealsRelations = relations(meals, ({ one, many }) => ({
   household: one(households, {
     fields: [meals.householdId],
     references: [households.id],
+  }),
+  recipe: one(recipes, {
+    fields: [meals.recipeId],
+    references: [recipes.id],
   }),
   completions: many(mealCompletions),
 }));
@@ -410,12 +486,15 @@ export type NewTask = typeof tasks.$inferInsert;
 export type TaskCompletion = typeof taskCompletions.$inferSelect;
 export type Meal = typeof meals.$inferSelect;
 export type NewMeal = typeof meals.$inferInsert;
+export type Recipe = typeof recipes.$inferSelect;
+export type NewRecipe = typeof recipes.$inferInsert;
 export type MealCompletion = typeof mealCompletions.$inferSelect;
 export type GroceryCycle = typeof groceryCycles.$inferSelect;
 export type GroceryItem = typeof groceryItems.$inferSelect;
 export type NewGroceryItem = typeof groceryItems.$inferInsert;
 
 export type UserRole = (typeof userRole.enumValues)[number];
+export type WorkdayStatus = (typeof workdayStatus.enumValues)[number];
 export type MealSlot = (typeof mealSlot.enumValues)[number];
 export type PrepTiming = (typeof prepTiming.enumValues)[number];
 export type GroceryStatus = (typeof groceryStatus.enumValues)[number];

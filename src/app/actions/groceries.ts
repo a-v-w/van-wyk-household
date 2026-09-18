@@ -94,6 +94,10 @@ export async function addItemToCycle(
 
 /* ---------------------------------------------------------- edit / remove -- */
 
+/**
+ * The admin can change any item on any list, locked or not. Everyone else may
+ * only touch their own items, and only while the list is still open.
+ */
 export async function editGroceryItem(
   itemId: number,
   patch: {
@@ -114,6 +118,40 @@ export async function editGroceryItem(
 
   await updateItem(itemId, patch);
   refresh();
+}
+
+/** The same edit, driven by a form so it can report back what went wrong. */
+export async function updateGroceryItem(
+  _state: GroceryFormState,
+  formData: FormData,
+): Promise<GroceryFormState> {
+  const viewer = await requireViewer();
+  const itemId = Number(formData.get("itemId") ?? 0);
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "An item needs a name." };
+
+  const item = await loadItem(itemId);
+  if (!item || item.cycle.householdId !== viewer.household.id) {
+    return { error: "That item is no longer on the list." };
+  }
+
+  const mayEdit =
+    viewer.isAdmin ||
+    (isCycleOpen(item.cycle) && item.addedBy === viewer.user.id);
+  if (!mayEdit) {
+    return { error: "This list is locked. Ask the household admin to change it." };
+  }
+
+  await updateItem(itemId, {
+    name,
+    quantity: String(formData.get("quantity") ?? ""),
+    category: (String(formData.get("category") ?? item.category) ||
+      item.category) as GroceryCategory,
+    note: String(formData.get("note") ?? ""),
+  });
+
+  refresh();
+  return { ok: true };
 }
 
 export async function deleteGroceryItem(itemId: number): Promise<void> {

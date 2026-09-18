@@ -6,19 +6,23 @@ import {
   dropItem,
   setItemOrdered,
 } from "@/app/actions/groceries";
+import { GroceryEditFields } from "@/components/grocery-edit-fields";
 import {
   Avatar,
   Chip,
   IconArrowRight,
   IconCheck,
+  IconPencil,
   cn,
 } from "@/components/ui";
+import type { GroceryCategory } from "@/db/schema";
 
 export type OutcomeRowData = {
   id: number;
   name: string;
   quantity: string | null;
   note: string | null;
+  category: GroceryCategory;
   status: "pending" | "ordered" | "unavailable" | "dropped";
   addedByName: string | null;
   addedByRole: "admin" | "employee" | null;
@@ -36,8 +40,27 @@ export type OutcomeRowData = {
 export function GroceryOutcomeRow({ row }: { row: OutcomeRowData }) {
   const [pending, startTransition] = useTransition();
   const [showLater, setShowLater] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const resolved = row.status !== "pending";
+
+  // A locked list is still the admin's to correct.
+  if (editing) {
+    return (
+      <li className="border-b border-line px-4 py-3 last:border-b-0">
+        <GroceryEditFields
+          item={{
+            id: row.id,
+            name: row.name,
+            quantity: row.quantity,
+            note: row.note,
+            category: row.category,
+          }}
+          onClose={() => setEditing(false)}
+        />
+      </li>
+    );
+  }
 
   return (
     <li
@@ -177,15 +200,26 @@ export function GroceryOutcomeRow({ row }: { row: OutcomeRowData }) {
         </Outcome>
       </div>
 
-      {resolved ? null : (
+      <div className="flex flex-none items-center gap-1">
+        {resolved ? null : (
+          <button
+            type="button"
+            onClick={() => setShowLater((v) => !v)}
+            className="hidden cursor-pointer px-1 text-xs font-bold text-muted hover:text-lock sm:block"
+          >
+            Later list
+          </button>
+        )}
         <button
           type="button"
-          onClick={() => setShowLater((v) => !v)}
-          className="hidden flex-none cursor-pointer text-xs font-bold text-muted hover:text-lock sm:block"
+          aria-label={`Edit ${row.name}`}
+          title="Edit this item"
+          onClick={() => setEditing(true)}
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-accent"
         >
-          Later list
+          <IconPencil size={16} />
         </button>
-      )}
+      </div>
     </li>
   );
 }
