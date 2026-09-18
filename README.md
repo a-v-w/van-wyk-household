@@ -2,12 +2,25 @@
 
 Next.js 16 (App Router, TypeScript, Tailwind) with Postgres via [Drizzle ORM](https://orm.drizzle.team). Local development runs against your own Postgres; production runs against [Neon](https://neon.tech) on Vercel.
 
-## Local development
+## Prerequisites
+
+- Node 20.11 or newer (`.nvmrc` says 22; `nvm use` picks it up).
+- A Postgres server on your machine plus the `psql`, `createdb` and `pg_isready` client tools on your PATH. Any of these works:
+  - Homebrew: `brew install postgresql@18 && brew services start postgresql@18`. Connects as your macOS user with no password, which matches the default `DATABASE_URL`.
+  - [Postgres.app](https://postgresapp.com): install, start a server, then add `/Applications/Postgres.app/Contents/Versions/latest/bin` to your PATH so the client tools are found.
+  - Anything else (Docker, a system package): set `DATABASE_URL` in `.env.local` to match its host, port, user and password, e.g. `postgresql://postgres:postgres@localhost:5432/van_wyk_household`.
+
+## First run after cloning
 
 ```bash
+nvm use
 npm install
 npm run dev
 ```
+
+Then open <http://localhost:3000>. The page reports whether the database is reachable, and <http://localhost:3000/api/health> returns JSON with the database time. If the first `npm run dev` fails, the `[db]` lines in the output say what is missing (server not running, client tools not on PATH, or a connection string that needs a user and password).
+
+## Local development
 
 `npm run dev` runs `scripts/db/ensure-local.mjs` first (the `predev` hook). It will:
 
