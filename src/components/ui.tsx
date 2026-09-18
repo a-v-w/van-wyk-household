@@ -177,6 +177,52 @@ export function Avatar({
   );
 }
 
+/* ------------------------------------------------------------- stat tile -- */
+
+type StatTone = "accent" | "danger" | "lock" | "ok";
+
+const STAT_TONES: Record<StatTone, string> = {
+  accent: "text-accent",
+  danger: "text-danger",
+  lock: "text-lock",
+  ok: "text-ok",
+};
+
+/** One number with its label. The figure leads; the words explain it. */
+export function StatTile({
+  label,
+  value,
+  hint,
+  tone,
+  className,
+}: {
+  label: string;
+  value: ReactNode;
+  hint?: string;
+  tone?: StatTone;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-0.5 rounded-lg bg-surface-2 px-3 py-2.5",
+        className,
+      )}
+    >
+      <span
+        className={cn(
+          "font-mono text-2xl leading-none font-bold tabular",
+          tone ? STAT_TONES[tone] : "text-ink",
+        )}
+      >
+        {value}
+      </span>
+      <span className="text-xs font-semibold text-ink-2">{label}</span>
+      {hint ? <span className="text-[11px] text-muted">{hint}</span> : null}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------ empty state -- */
 
 export function Empty({

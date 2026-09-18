@@ -9,6 +9,7 @@ import {
   Empty,
   IconArrowRight,
   IconLock,
+  StatTile,
   buttonClass,
 } from "@/components/ui";
 import { AttendanceTally } from "@/components/attendance-tally";
@@ -41,7 +42,7 @@ import {
   loadCycleView,
 } from "@/lib/groceries";
 import { loadDayKitchen, SLOT_LABEL } from "@/lib/meals";
-import { describeRule, loadOccurrences } from "@/lib/tasks";
+import { loadOccurrences } from "@/lib/tasks";
 import { loadAttendance, STATUS_LABEL } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
@@ -70,46 +71,70 @@ export default async function AdminDashboard() {
   const members = await householdMembers(household.id);
   const employee = await householdEmployee(household.id);
 
-  const [weekOccurrences, myToday, kitchen, cycle, awaiting] = await Promise.all(
-    [
+  const [weekOccurrences, todayOccurrences, kitchen, cycle, awaiting] =
+    await Promise.all([
       loadOccurrences({
         householdId: household.id,
         from: monday,
         to: week[6],
         calendar,
       }),
+      // Everyone's, not just mine, and dragging in anything once-off that is
+      // past its date and still not ticked.
       loadOccurrences({
         householdId: household.id,
         from: today,
         to: today,
         calendar,
-        assigneeId: user.id,
         includeOverdue: true,
       }),
       loadDayKitchen(household.id, today, calendar),
       currentCycle(household),
       cyclesAwaitingOrder(household),
-    ],
-  );
+    ]);
 
   const view = await loadCycleView(cycle);
   const pending = view.items.filter((i) => i.status === "pending");
   const carried = pending.filter((i) => i.carryCount > 0);
 
+  /* ------------------------------------------------------ task tracking -- */
+
+  // Today, split the two ways that matter: still to do, and done.
+  const outstandingToday = todayOccurrences.filter((o) => !o.done);
+  const completedToday = todayOccurrences
+    .filter((o) => o.done)
+    .sort((a, b) => {
+      const at = a.completedAt?.getTime() ?? 0;
+      const bt = b.completedAt?.getTime() ?? 0;
+      return bt - at; // most recently ticked first
+    });
+
+  // The week counts only what has actually come due, so Friday is not judged
+  // against tasks that do not happen until Sunday.
+  const weekDue = weekOccurrences.filter((o) => o.date <= today);
+  const weekDone = weekDue.filter((o) => o.done);
+  const weekToCome = weekOccurrences.filter((o) => o.date > today);
+
+  const missedThisWeek = weekOccurrences.filter((o) => !o.done && o.date < today);
+
   const perPerson = members.map((person) => {
     const theirs = weekOccurrences.filter((o) => o.task.assignedTo === person.id);
     const due = theirs.filter((o) => o.date <= today);
+    const theirToday = todayOccurrences.filter(
+      (o) => o.task.assignedTo === person.id,
+    );
     return {
       person,
       done: due.filter((o) => o.done).length,
       total: due.length,
       upcoming: theirs.filter((o) => o.date > today).length,
+      todayDone: theirToday.filter((o) => o.done).length,
+      todayTotal: theirToday.length,
     };
   });
 
-  const missed = weekOccurrences
-    .filter((o) => !o.done && o.date < today)
-    .slice(0, 6);
+  const percent = (done: number, total: number) =>
+    total === 0 ? 0 : Math.round((done / total) * 100);
 
   const defaults = new Set(household.workingWeekdays);
   const days: WorkdayCell[] = week.map((date) => {
@@ -128,9 +153,6 @@ export default async function AdminDashboard() {
     };
   });
 
-  const employeeTodayList = weekOccurrences.filter(
-    (o) => o.date === today && o.task.assignedTo !== user.id,
-  );
 
   return (
     <div className="flex flex-col gap-6 px-5 py-6 lg:px-8 lg:py-8">
@@ -228,56 +250,213 @@ export default async function AdminDashboard() {
         )}
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-3">
-        <Card className="flex flex-col">
-          <CardHeader title="Tasks this week" />
-          <div className="flex flex-col gap-4 px-5 pt-1 pb-5">
-            {perPerson.map(({ person, done, total, upcoming }) => (
-              <div key={person.id} className="flex flex-col gap-1.5">
-                <div className="flex items-center gap-2 text-sm font-bold">
-                  <Avatar name={person.name} role={person.role} size="sm" />
-                  <span className="flex-1 truncate">
-                    {person.id === user.id ? "You" : person.name}
-                  </span>
-                  <span className="font-mono text-xs text-muted tabular">
-                    {done} / {total}
-                  </span>
-                </div>
-                <div className="h-2 overflow-hidden rounded-full bg-surface-3">
-                  <div
-                    className="h-full rounded-full bg-accent transition-[width]"
-                    style={{
-                      width: `${total === 0 ? 0 : Math.round((done / total) * 100)}%`,
-                    }}
-                  />
-                </div>
-                {upcoming > 0 ? (
-                  <span className="text-xs text-muted">
-                    {upcoming} still to come this week
-                  </span>
-                ) : null}
-              </div>
-            ))}
+      {/* Tasks: what is done, what is not, today and across the week. */}
+      <Card className="flex flex-col p-5">
+        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+          <span className="label">Tasks</span>
+          <Link
+            href="/admin/tasks"
+            className="text-[13px] font-bold text-accent"
+          >
+            Manage tasks
+          </Link>
+        </div>
 
-            {missed.length > 0 ? (
-              <div className="flex flex-col gap-1.5 border-t border-line pt-3">
-                <span className="label text-danger">Missed</span>
-                {missed.map((o) => (
-                  <div
-                    key={`${o.task.id}:${o.date}`}
-                    className="flex items-center justify-between gap-2 text-sm"
-                  >
-                    <span className="truncate">{o.task.title}</span>
-                    <span className="flex-none font-mono text-xs text-muted">
-                      {weekdayShort(o.date)}
-                    </span>
-                  </div>
-                ))}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatTile
+            label="Completed today"
+            value={`${completedToday.length} / ${todayOccurrences.length}`}
+            hint={`${percent(completedToday.length, todayOccurrences.length)}% of today's list`}
+            tone={
+              todayOccurrences.length > 0 &&
+              completedToday.length === todayOccurrences.length
+                ? "ok"
+                : undefined
+            }
+          />
+          <StatTile
+            label="Outstanding today"
+            value={outstandingToday.length}
+            hint={
+              outstandingToday.length === 0
+                ? "Nothing left"
+                : "Still to be ticked"
+            }
+            tone={outstandingToday.length > 0 ? "accent" : "ok"}
+          />
+          <StatTile
+            label="Completed this week"
+            value={`${weekDone.length} / ${weekDue.length}`}
+            hint={
+              weekToCome.length > 0
+                ? `${weekToCome.length} more still to come`
+                : "The week is fully due"
+            }
+          />
+          <StatTile
+            label="Missed"
+            value={missedThisWeek.length}
+            hint="Earlier this week, never ticked"
+            tone={missedThisWeek.length > 0 ? "danger" : "ok"}
+          />
+        </div>
+
+        {/* Who is carrying what, across the days that have come due. */}
+        <div className="mt-4 flex flex-col gap-3 border-t border-line pt-4">
+          {perPerson.map(({ person, done, total, upcoming, todayDone, todayTotal }) => (
+            <div key={person.id} className="flex flex-col gap-1.5">
+              <div className="flex flex-wrap items-center gap-2 text-sm font-bold">
+                <Avatar name={person.name} role={person.role} size="sm" />
+                <span className="min-w-0 flex-1 truncate">
+                  {person.id === user.id ? "You" : person.name}
+                </span>
+                <span className="font-mono text-xs text-muted tabular">
+                  today {todayDone} / {todayTotal} · week {done} / {total}
+                </span>
               </div>
-            ) : null}
+              <div className="h-2 overflow-hidden rounded-full bg-surface-3">
+                <div
+                  className="h-full rounded-full bg-accent"
+                  style={{ width: `${percent(done, total)}%` }}
+                />
+              </div>
+              {upcoming > 0 ? (
+                <span className="text-xs text-muted">
+                  {upcoming} still to come later this week
+                </span>
+              ) : null}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 grid gap-4 border-t border-line pt-4 lg:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="label">Outstanding today</span>
+              <span className="font-mono text-xs text-muted tabular">
+                {outstandingToday.length}
+              </span>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-line">
+              {outstandingToday.length === 0 ? (
+                <Empty
+                  title="Everything today is ticked"
+                  className="py-7"
+                />
+              ) : (
+                <ul className="max-h-96 overflow-y-auto">
+                  {outstandingToday.map((o) => (
+                    <TaskRow
+                      key={`out-${o.task.id}:${o.date}`}
+                      row={{
+                        taskId: o.task.id,
+                        date: o.date,
+                        title: o.task.title,
+                        notes: null,
+                        done: false,
+                        time: formatTime(o.task.timeOfDay) || null,
+                        rule: null,
+                        overdue: o.overdue,
+                        assigneeName: o.assignee
+                          ? o.assignee.id === user.id
+                            ? "You"
+                            : o.assignee.name
+                          : null,
+                        showAssignee: true,
+                        canTick: true,
+                        completedLabel: null,
+                      }}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>
-        </Card>
 
+          <div className="flex min-w-0 flex-col gap-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="label">Completed today</span>
+              <span className="font-mono text-xs text-muted tabular">
+                {completedToday.length}
+              </span>
+            </div>
+            <div className="overflow-hidden rounded-lg border border-line">
+              {completedToday.length === 0 ? (
+                <Empty title="Nothing ticked off yet today" className="py-7" />
+              ) : (
+                <ul className="max-h-96 overflow-y-auto">
+                  {completedToday.map((o) => (
+                    <TaskRow
+                      key={`done-${o.task.id}:${o.date}`}
+                      row={{
+                        taskId: o.task.id,
+                        date: o.date,
+                        title: o.task.title,
+                        notes: null,
+                        done: true,
+                        time: null,
+                        rule: null,
+                        overdue: false,
+                        assigneeName: o.assignee
+                          ? o.assignee.id === user.id
+                            ? "You"
+                            : o.assignee.name
+                          : null,
+                        showAssignee: true,
+                        canTick: true,
+                        completedLabel: o.completedAt
+                          ? `Ticked ${o.completedAt.toLocaleTimeString("en-ZA", {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              hour12: false,
+                              timeZone: household.timezone,
+                            })}`
+                          : null,
+                      }}
+                    />
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {missedThisWeek.length > 0 ? (
+          <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4">
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="label text-danger">Missed earlier this week</span>
+              <span className="font-mono text-xs text-muted tabular">
+                {missedThisWeek.length}
+              </span>
+            </div>
+            <ul className="flex flex-wrap gap-x-5 gap-y-1.5">
+              {missedThisWeek.slice(0, 10).map((o) => (
+                <li
+                  key={`missed-${o.task.id}:${o.date}`}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <span className="font-mono text-xs text-muted tabular">
+                    {weekdayShort(o.date)}
+                  </span>
+                  <span>{o.task.title}</span>
+                  {o.assignee && o.assignee.id !== user.id ? (
+                    <span className="text-xs text-muted">
+                      {firstName(o.assignee)}
+                    </span>
+                  ) : null}
+                </li>
+              ))}
+              {missedThisWeek.length > 10 ? (
+                <li className="text-sm text-muted">
+                  and {missedThisWeek.length - 10} more
+                </li>
+              ) : null}
+            </ul>
+          </div>
+        ) : null}
+      </Card>
+
+      <div className="grid gap-5 lg:grid-cols-2">
         <Card className="flex flex-col">
           <CardHeader
             title="Grocery list"
@@ -342,38 +521,6 @@ export default async function AdminDashboard() {
         </Card>
 
         <Card className="flex flex-col">
-          <CardHeader title="Your tasks today" />
-          {myToday.length === 0 ? (
-            <Empty title="Nothing for you today" />
-          ) : (
-            <ul>
-              {myToday.map((o) => (
-                <TaskRow
-                  key={`${o.task.id}:${o.date}`}
-                  row={{
-                    taskId: o.task.id,
-                    date: o.date,
-                    title: o.task.title,
-                    notes: null,
-                    done: o.done,
-                    time: formatTime(o.task.timeOfDay) || null,
-                    rule:
-                      o.task.kind === "recurring" ? describeRule(o.task) : null,
-                    overdue: o.overdue,
-                    assigneeName: null,
-                    showAssignee: false,
-                    canTick: true,
-                    completedLabel: null,
-                  }}
-                />
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
-
-      <div className="grid gap-5 lg:grid-cols-2">
-        <Card className="flex flex-col">
           <CardHeader
             title="Meals today"
             action={
@@ -437,41 +584,6 @@ export default async function AdminDashboard() {
           )}
         </Card>
 
-        <Card className="flex flex-col">
-          <CardHeader title="The household's day so far" />
-          {employeeTodayList.length === 0 ? (
-            <Empty title="No one else has tasks today" />
-          ) : (
-            <ul>
-              {employeeTodayList.map((o) => (
-                <TaskRow
-                  key={`${o.task.id}:${o.date}`}
-                  row={{
-                    taskId: o.task.id,
-                    date: o.date,
-                    title: o.task.title,
-                    notes: null,
-                    done: o.done,
-                    time: formatTime(o.task.timeOfDay) || null,
-                    rule: null,
-                    overdue: o.overdue,
-                    assigneeName: o.assignee?.name ?? null,
-                    showAssignee: members.length > 2,
-                    canTick: true,
-                    completedLabel: o.completedAt
-                      ? `Done ${o.completedAt.toLocaleTimeString("en-ZA", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          hour12: false,
-                          timeZone: household.timezone,
-                        })}`
-                      : null,
-                  }}
-                />
-              ))}
-            </ul>
-          )}
-        </Card>
       </div>
     </div>
   );
