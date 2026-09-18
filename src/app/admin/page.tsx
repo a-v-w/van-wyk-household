@@ -11,6 +11,7 @@ import {
   IconLock,
   buttonClass,
 } from "@/components/ui";
+import { AttendanceTally } from "@/components/attendance-tally";
 import { WorkdayStrip, type WorkdayCell } from "@/components/workday-strip";
 import {
   firstName,
@@ -46,38 +47,6 @@ import { loadAttendance, STATUS_LABEL } from "@/lib/workdays";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Dashboard" };
-
-/** One number in the attendance row. */
-function Tally({
-  label,
-  value,
-  hint,
-  tone,
-}: {
-  label: string;
-  value: number;
-  hint?: string;
-  tone?: "accent" | "danger" | "lock";
-}) {
-  const colour =
-    tone === "danger"
-      ? "text-danger"
-      : tone === "lock"
-        ? "text-lock"
-        : tone === "accent"
-          ? "text-accent"
-          : "text-ink";
-
-  return (
-    <div className="flex flex-col gap-0.5 rounded-lg bg-surface-2 px-3 py-2.5">
-      <span className={`font-mono text-2xl leading-none font-bold tabular ${colour}`}>
-        {value}
-      </span>
-      <span className="text-xs font-semibold text-ink-2">{label}</span>
-      {hint ? <span className="text-[11px] text-muted">{hint}</span> : null}
-    </div>
-  );
-}
 
 export default async function AdminDashboard() {
   const viewer = await requireAdmin();
@@ -203,36 +172,21 @@ export default async function AdminDashboard() {
             Attendance · {monthLabel}
             {employee ? ` · ${firstName(employee)}` : ""}
           </span>
-          <span className="text-[13px] text-muted">
-            Counted to {formatDate(today)}.
-          </span>
+          <Link
+            href="/admin/attendance"
+            className="text-[13px] font-bold text-accent"
+          >
+            Open attendance
+          </Link>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Tally label="Days worked" value={attendance.worked} />
-          <Tally
-            label="Extra days"
-            value={attendance.extra}
-            hint="Outside the usual weekdays"
-            tone={attendance.extra > 0 ? "accent" : undefined}
-          />
-          <Tally
-            label="Sick"
-            value={attendance.sick}
-            tone={attendance.sick > 0 ? "danger" : undefined}
-          />
-          <Tally
-            label="Leave"
-            value={attendance.leave}
-            tone={attendance.leave > 0 ? "lock" : undefined}
-          />
-        </div>
+        <AttendanceTally attendance={attendance} />
 
         {attendance.exceptions.length > 0 ? (
           <div className="mt-4 flex flex-col gap-2 border-t border-line pt-3">
             <span className="label">Days that were different</span>
             <ul className="flex flex-col gap-1.5">
-              {attendance.exceptions.slice(0, 8).map((entry) => (
+              {attendance.exceptions.slice(0, 6).map((entry) => (
                 <li
                   key={entry.date}
                   className="flex flex-wrap items-center gap-2 text-sm"

@@ -107,11 +107,49 @@ export function formatMonth(date: IsoDate): string {
   return format(parseISO(date), "MMMM yyyy");
 }
 
+export function formatMonthShort(date: IsoDate): string {
+  return format(parseISO(date), "MMM yyyy");
+}
+
+/** The first date of the month containing `date`. */
+export function startOfMonth(date: IsoDate): IsoDate {
+  return `${date.slice(0, 7)}-01`;
+}
+
 /** The last date of the month containing `date`. */
 export function endOfMonth(date: IsoDate): IsoDate {
   const [year, month] = date.split("-").map(Number);
   const last = new Date(Date.UTC(year, month, 0)).getUTCDate();
   return `${date.slice(0, 7)}-${String(last).padStart(2, "0")}`;
+}
+
+/** The first of the month `months` away from the one containing `date`. */
+export function shiftMonthStart(date: IsoDate, months: number): IsoDate {
+  const [year, month] = date.split("-").map(Number);
+  const target = new Date(Date.UTC(year, month - 1 + months, 1));
+  return target.toISOString().slice(0, 10);
+}
+
+/**
+ * The weeks of a month as Monday-first rows, padded with the neighbouring
+ * dates so every row has seven days.
+ */
+export function monthGrid(date: IsoDate): IsoDate[][] {
+  const first = startOfMonth(date);
+  const last = endOfMonth(date);
+  const start = shiftDate(first, -(isoWeekday(first) - 1));
+  const end = shiftDate(last, 7 - isoWeekday(last));
+
+  const weeks: IsoDate[][] = [];
+  for (let cursor = start; cursor <= end; cursor = shiftDate(cursor, 7)) {
+    weeks.push(Array.from({ length: 7 }, (_, i) => shiftDate(cursor, i)));
+  }
+  return weeks;
+}
+
+/** "YYYY-MM" for a month picker input. */
+export function monthValue(date: IsoDate): string {
+  return date.slice(0, 7);
 }
 
 export function weekdayName(date: IsoDate): string {

@@ -131,12 +131,16 @@ export type Attendance = {
   to: IsoDate;
   /** Days actually worked, counting only dates that have already happened. */
   worked: number;
-  /** Of those, days worked outside the usual weekday pattern. */
+  /** Working days across the whole range, future included. */
+  scheduled: number;
+  /** Of the days worked, those outside the usual weekday pattern. */
   extra: number;
   sick: number;
   leave: number;
   /** Days off that were not sick or leave, excluding the usual days off. */
   off: number;
+  /** True when the range has not finished yet, so counts are partial. */
+  inProgress: boolean;
   /** Every recorded exception in the range, most recent first. */
   exceptions: { date: IsoDate; status: WorkdayStatus; note: string | null }[];
 };
@@ -157,10 +161,12 @@ export function summariseAttendance(
     from,
     to,
     worked: 0,
+    scheduled: 0,
     extra: 0,
     sick: 0,
     leave: 0,
     off: 0,
+    inProgress: upTo >= from && upTo < to,
     exceptions: [],
   };
 
@@ -168,6 +174,8 @@ export function summariseAttendance(
     const status = calendar.statusFor(date);
     const record = calendar.recordFor(date);
     const usualWorkday = defaults.has(isoWeekday(date));
+
+    if (status === "working") summary.scheduled += 1;
 
     if (date <= upTo && status === "working") {
       summary.worked += 1;
@@ -188,6 +196,50 @@ export function summariseAttendance(
 
   summary.exceptions.reverse();
   return summary;
+}
+
+/**
+ * Records the same status across a stretch of dates, which is how a block of
+ * leave gets logged months ahead of time.
+ */
+export async function setWorkdayRange(
+  householdId: number,
+  from: IsoDate,
+  to: IsoDate,
+  status: WorkdayStatus,
+  note: string | null,
+  recordedBy: number | null,
+  /** Skip dates that are already days off under the usual pattern. */
+  onlyUsualWorkdays: boolean,
+  usualWeekdays: number[],
+): Promise<number> {
+  const defaults = new Set(usualWeekdays);
+  let written = 0;
+
+  for (const date of datesBetween(from, to)) {
+    if (onlyUsualWorkdays && !defaults.has(isoWeekday(date))) continue;
+    await setWorkday(householdId, date, status, note, recordedBy);
+    written += 1;
+  }
+
+  return written;
+}
+
+/** Removes every record in a range, so those dates follow the pattern again. */
+export async function clearWorkdayRange(
+  householdId: number,
+  from: IsoDate,
+  to: IsoDate,
+): Promise<void> {
+  await db
+    .delete(workdayOverrides)
+    .where(
+      and(
+        eq(workdayOverrides.householdId, householdId),
+        gte(workdayOverrides.date, from),
+        lte(workdayOverrides.date, to),
+      ),
+    );
 }
 
 /** Loads a calendar for a range and summarises it in one go. */

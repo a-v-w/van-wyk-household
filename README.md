@@ -51,7 +51,7 @@ That fills in sample tasks, a two-week menu and two grocery lists. It deletes ev
 ## How the week works
 
 - **Working days** default to Monday to Friday. Click any day in the dashboard's week strip to record what actually happened: worked, off, sick or on leave, with an optional note. Days that follow the usual pattern are not stored at all.
-- **Attendance** is totalled for the month on the dashboard: days worked, extra days outside the usual weekdays, sick days and leave, with the list of dates that were different.
+- **Attendance** has its own admin tab, one calendar month at a time with month-by-month navigation, plus a summary on the dashboard. Record a single day by clicking it, or a whole run at once. Leave can be booked months ahead: pick 14 December to 4 January, choose Leave, save.
 - **Recurring tasks** set to "working days only" follow that calendar. A Saturday marked as worked picks up the normal daily tasks with nothing to re-create; a sick day takes them away.
 - **Day-before meal prep** lands on the last day actually worked. A Monday dinner prepped in advance shows up on Friday when nobody works the weekend, and on Saturday when they do.
 - **A meal slot holds several dishes**, each optionally named for a person, because households often eat differently at the same sitting. A slot with nothing planned does not appear on the menu at all.

@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ComponentType } from "react";
 import {
   IconBook,
+  IconCalendar,
   IconCart,
   IconChecklist,
   IconGrid,
@@ -37,6 +38,12 @@ const EMPLOYEE_ITEMS: NavItem[] = [
 const ADMIN_ITEMS: NavItem[] = [
   { href: "/admin", label: "Dashboard", Icon: IconGrid },
   { href: "/admin/tasks", label: "Tasks", Icon: IconChecklist, prefix: true },
+  {
+    href: "/admin/attendance",
+    label: "Attendance",
+    Icon: IconCalendar,
+    prefix: true,
+  },
   { href: "/admin/menus", label: "Menus", Icon: IconMenu, prefix: true },
   { href: "/admin/recipes", label: "Recipes", Icon: IconBook, prefix: true },
   { href: "/admin/groceries", label: "Groceries", Icon: IconCart, prefix: true },

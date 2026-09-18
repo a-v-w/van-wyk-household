@@ -6,7 +6,13 @@ import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { households, users, type WorkdayStatus } from "@/db/schema";
 import { requireAdmin } from "@/lib/auth";
-import { setWorkday } from "@/lib/workdays";
+import {
+  clearWorkdayRange,
+  setWorkday,
+  setWorkdayRange,
+  STATUS_CHOICES,
+  STATUS_LABEL,
+} from "@/lib/workdays";
 
 export type SettingsState = { error?: string; ok?: string } | undefined;
 
@@ -53,6 +59,75 @@ export async function clearDayStatus(date: string): Promise<void> {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
   await setWorkday(viewer.household.id, date, null, null, viewer.user.id);
   refresh();
+}
+
+export type RangeState = { error?: string; ok?: string } | undefined;
+
+/**
+ * Records a block of dates at once. This is how leave gets booked in advance:
+ * pick the first and last day in December, choose Leave, save.
+ */
+export async function setDayRange(
+  _state: RangeState,
+  formData: FormData,
+): Promise<RangeState> {
+  const viewer = await requireAdmin();
+
+  const from = String(formData.get("from") ?? "");
+  const to = String(formData.get("to") ?? "") || from;
+  const status = String(formData.get("status") ?? "") as WorkdayStatus;
+  const note = String(formData.get("note") ?? "").trim() || null;
+  const onlyWorkdays = formData.get("onlyWorkdays") === "on";
+
+  const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (!isDate(from) || !isDate(to)) return { error: "Pick both dates." };
+  if (to < from) return { error: "The last day is before the first day." };
+  if (!STATUS_CHOICES.includes(status)) return { error: "Pick what to record." };
+
+  const days = Math.round(
+    (Date.parse(to) - Date.parse(from)) / 86_400_000,
+  );
+  if (days > 365) return { error: "That is more than a year. Pick a shorter run." };
+
+  const written = await setWorkdayRange(
+    viewer.household.id,
+    from,
+    to,
+    status,
+    note,
+    viewer.user.id,
+    onlyWorkdays,
+    viewer.household.workingWeekdays,
+  );
+
+  refresh();
+
+  if (written === 0) {
+    return {
+      error: "Nothing was recorded: every day in that run is already a day off.",
+    };
+  }
+  return {
+    ok: `${written} ${written === 1 ? "day" : "days"} recorded as ${STATUS_LABEL[status].toLowerCase()}.`,
+  };
+}
+
+/** Wipes every record in a range, back to the usual pattern. */
+export async function clearDayRange(
+  _state: RangeState,
+  formData: FormData,
+): Promise<RangeState> {
+  const viewer = await requireAdmin();
+
+  const from = String(formData.get("from") ?? "");
+  const to = String(formData.get("to") ?? "") || from;
+  const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (!isDate(from) || !isDate(to)) return { error: "Pick both dates." };
+  if (to < from) return { error: "The last day is before the first day." };
+
+  await clearWorkdayRange(viewer.household.id, from, to);
+  refresh();
+  return { ok: "Those days follow the usual pattern again." };
 }
 
 /* --------------------------------------------------------------- settings -- */

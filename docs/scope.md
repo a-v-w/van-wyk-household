@@ -57,7 +57,17 @@ Only **Worked** counts as a working day, which means:
 - The employee's Today view on a non-working day shows a short note. Anything the admin has explicitly dated on that day still shows, because the admin chose the date on purpose.
 
 ### Tracking it
-The admin dashboard carries an **attendance** card for the current month: days worked, extra days worked outside the usual weekdays, sick days and days of leave, plus the list of dates that were different with their notes. Counts stop at today, so a part-finished month does not read as a full one; a future exception is listed but marked as not yet counted.
+**Attendance is its own admin tab**, and a summary of the current month also sits on the dashboard with a link through to it.
+
+The tab runs a calendar month at a time, from the 1st to the last day, and steps back and forward a month at a time. It holds:
+
+- **The month's counts**: days worked, working days across the whole month, extra days outside the usual weekdays, sick days and days of leave.
+- **A month calendar**, every day showing its status and note. Click any day to record it.
+- **Record a run of days**, for booking ahead: a first day, a last day, what to record and a note. "Skip the usual days off" is on by default, so a run across several weeks records the weekdays and leaves the weekends alone. A run may cross a month boundary; each date lands in its own month. The same form clears a run.
+
+Counts stop at today, so a part-finished month does not read as a full one, and a future date is listed but marked as still to come. A month entirely ahead says so and shows what is planned.
+
+**Booking leave in advance** is the range form: pick 14 December to 4 January, choose Leave, add a note, save. The days are recorded then and there, so recurring tasks do not fire on them and the months they fall in show them in their counts.
 
 ---
 
@@ -202,19 +212,20 @@ Push notifications and WhatsApp are out of scope for v1. The reminder time is a 
 - Login
 
 **Employee (mobile-first, the primary surface)**
-1. **Today** — her tasks, prep items, today's lunch and dinner, grocery banner on Fridays. This is the home screen.
+1. **Today** — their tasks, prep items, today's meals, grocery banner on lock day. This is the home screen.
 2. **Tasks** — this week ahead.
 3. **Menu** — this week and next, with a recipe link on any dish that has one.
 4. **Recipes** — the household cookbook.
-4. **Groceries** — current cycle, add item, lock countdown.
+5. **Groceries** — current cycle, add item, lock countdown.
 
 **Admin**
-1. **Dashboard** — this week at a glance: what was ticked, what was missed, per person; grocery cycle status; your own tasks for today; "working this weekend" toggle.
-2. **Tasks** — manage recurring and once-off tasks, filter by assignee; completion history.
-3. **Menus** — week editor with copy-last-week, several dishes per slot, and a recipe picker.
-4. **Recipes** — write and edit the cookbook.
-5. **Groceries** — current cycle, past cycles, order outcomes (ordered / out of stock / not needed), carry-over, copy-as-text, unlock, and full editing of any list at any time.
-6. **Settings** — the employee's account, default working days, recorded exceptions, timezone, reminder time, notification emails.
+1. **Dashboard** — this week at a glance per person, the month's attendance summary, grocery cycle status, your own tasks for today, and the week strip for recording worked / off / sick / leave.
+2. **Attendance** — a month at a time, with a calendar, month navigation and the range form for booking leave ahead.
+3. **Tasks** — manage recurring and once-off tasks, filter by assignee; completion history.
+4. **Menus** — week editor with copy-last-week, several dishes per slot, and a recipe picker.
+5. **Recipes** — write and edit the cookbook.
+6. **Groceries** — current cycle, past cycles, order outcomes (ordered / out of stock / not needed), carry-over, copy-as-text, unlock, and full editing of any list at any time.
+7. **Settings** — the employee's account, default working days, recorded exceptions, timezone, reminder time, notification emails.
 
 The employee opens the same URL in their phone's browser. A web manifest lets them add it to the home screen so it opens without browser chrome, but it is still the website; there is nothing to install from a store.
 
@@ -291,7 +302,7 @@ Settled:
 - **Tasks have assignees**: the employee or the admin. Default is the employee.
 - **Web app only**: browser on phone and desktop, no native app.
 - **A slot can hold several dishes**, each optionally named for a person; empty slots never show.
-- **Attendance** is tracked per date as worked, off, sick or leave, and summarised monthly on the dashboard.
+- **Attendance** is tracked per date as worked, off, sick or leave, lives in its own admin tab running a calendar month at a time, and is summarised on the dashboard. Runs of days, such as December leave, are recorded in one go and may be booked months ahead.
 - **The admin can edit any grocery list at any time**, locked or not.
 - **Recipes** are a first-class area, linkable from any dish.
 
