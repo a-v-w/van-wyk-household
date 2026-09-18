@@ -385,36 +385,39 @@ export default async function AdminDashboard() {
               </Link>
             }
           />
-          {kitchen.today.length === 0 && kitchen.prepAhead.length === 0 ? (
+          {kitchen.todayBySlot.length === 0 && kitchen.prepAhead.length === 0 ? (
             <Empty
               title="No menu set for today"
               hint="Plan the week and the kitchen list fills itself in."
             />
           ) : (
             <ul>
-              {kitchen.today.map((meal) => (
-                <li
-                  key={meal.id}
-                  className="flex items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-b-0"
-                >
-                  <span className="label w-14 flex-none">
-                    {SLOT_LABEL[meal.slot]}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate font-semibold">
-                    {meal.dish}
-                  </span>
-                  {meal.forWhom ? (
-                    <Chip tone="accent">for {meal.forWhom}</Chip>
-                  ) : null}
-                  {meal.prepTiming === "day_before" ? (
-                    <Chip tone={meal.prepDone ? "ok" : "lock"}>
-                      {meal.prepDone ? "Prepped" : "Prep missed"}
-                    </Chip>
-                  ) : (
-                    <Chip>On the day</Chip>
-                  )}
-                </li>
-              ))}
+              {/* Grouped by slot, so every lunch sits together. */}
+              {kitchen.todayBySlot.flatMap((group) =>
+                group.entries.map((meal, index) => (
+                  <li
+                    key={meal.id}
+                    className="flex items-center gap-3 border-b border-line px-5 py-3 text-sm last:border-b-0"
+                  >
+                    <span className="label w-14 flex-none">
+                      {index === 0 ? SLOT_LABEL[group.slot] : ""}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-semibold">
+                      {meal.dish}
+                    </span>
+                    {meal.forWhom ? (
+                      <Chip tone="accent">for {meal.forWhom}</Chip>
+                    ) : null}
+                    {meal.prepTiming === "day_before" ? (
+                      <Chip tone={meal.prepDone ? "ok" : "lock"}>
+                        {meal.prepDone ? "Prepped" : "Prep missed"}
+                      </Chip>
+                    ) : (
+                      <Chip>On the day</Chip>
+                    )}
+                  </li>
+                )),
+              )}
               {kitchen.prepAhead.map((meal) => (
                 <li
                   key={`prep-${meal.id}`}
