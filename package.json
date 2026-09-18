@@ -14,19 +14,28 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "deploy": "vercel deploy --prod"
+    "deploy": "vercel deploy --prod",
+    "db:seed": "node scripts/db/seed-admin.mjs",
+    "db:seed:demo": "node scripts/db/seed-demo.mjs"
   },
   "dependencies": {
+    "@date-fns/tz": "^1.5.0",
     "@neondatabase/serverless": "^1.1.0",
+    "bcryptjs": "^3.0.3",
+    "date-fns": "^4.4.0",
     "dotenv": "^18.0.0",
     "drizzle-orm": "^0.45.2",
+    "jose": "^6.2.12",
     "next": "16.3.5",
     "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "resend": "^6.28.1",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/bcryptjs": "^2.4.6",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",

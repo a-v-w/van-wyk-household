@@ -4,5 +4,11 @@
   "git": {
     "deploymentEnabled": false
   },
-  "ignoreCommand": "[ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ]"
+  "ignoreCommand": "[ \"$VERCEL_GIT_COMMIT_REF\" != \"main\" ]",
+  "crons": [
+    {
+      "path": "/api/reminders",
+      "schedule": "0 7 * * *"
+    }
+  ]
 }
