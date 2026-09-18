@@ -35,6 +35,7 @@ import {
   currentLockDate,
   cyclesAwaitingOrder,
   loadCycleView,
+  resolveList,
 } from "@/lib/groceries";
 import { loadDayKitchen, SLOT_LABEL } from "@/lib/meals";
 import { loadOccurrences } from "@/lib/tasks";
@@ -84,7 +85,7 @@ export default async function AdminDashboard() {
     ),
   }));
 
-  const [weekOccurrences, todayOccurrences, kitchen, cycle, awaiting] =
+  const [weekOccurrences, todayOccurrences, kitchen, groceryList] =
     await Promise.all([
       loadOccurrences({
         householdId: household.id,
@@ -102,12 +103,16 @@ export default async function AdminDashboard() {
         includeOverdue: true,
       }),
       loadDayKitchen(household.id, today, calendars),
-      currentCycle(household),
-      cyclesAwaitingOrder(household),
+      resolveList(household),
     ]);
 
-  const view = await loadCycleView(cycle);
-  const pending = view.items.filter((i) => i.status === "pending");
+  const cycle = groceryList
+    ? await currentCycle(household, groceryList)
+    : null;
+  const view =
+    cycle && groceryList ? await loadCycleView(groceryList, cycle) : null;
+  const awaiting = groceryList ? await cyclesAwaitingOrder(groceryList) : [];
+  const pending = view?.items.filter((i) => i.status === "pending") ?? [];
   const carried = pending.filter((i) => i.carryCount > 0);
 
   /* ------------------------------------------------------ task tracking -- */
@@ -499,15 +504,21 @@ export default async function AdminDashboard() {
       <div className="grid gap-5 lg:grid-cols-2">
         <Card className="flex flex-col">
           <CardHeader
-            title="Grocery list"
+            title={groceryList ? groceryList.name : "Grocery list"}
             action={
-              currentLockDate(household) === today ? (
-                <Chip tone="lock">
-                  <IconLock size={14} />
-                  Locks today
-                </Chip>
+              groceryList && groceryList.kind === "weekly" ? (
+                currentLockDate(household, groceryList) === today ? (
+                  <Chip tone="lock">
+                    <IconLock size={14} />
+                    Closes today
+                  </Chip>
+                ) : (
+                  <Chip>
+                    Closes {formatDate(currentLockDate(household, groceryList))}
+                  </Chip>
+                )
               ) : (
-                <Chip>Locks {formatDate(currentLockDate(household))}</Chip>
+                <Chip>Always open</Chip>
               )
             }
           />
@@ -517,7 +528,9 @@ export default async function AdminDashboard() {
                 {pending.length}
               </span>
               <span className="text-sm text-ink-2">
-                items for the order on {formatDate(cycle.orderDate)}
+                {cycle?.orderDate
+                  ? `items for the order on ${formatDate(cycle.orderDate)}`
+                  : "items waiting"}
               </span>
             </div>
 
@@ -551,12 +564,14 @@ export default async function AdminDashboard() {
               >
                 Open the list
               </Link>
-              {awaiting.length > 0 ? (
+              {awaiting.length > 0 && awaiting[0].id !== cycle?.id ? (
                 <Link
                   href="/admin/groceries"
                   className={buttonClass("primary", "sm")}
                 >
-                  Order {formatDate(awaiting[0].orderDate)}
+                  {awaiting[0].orderDate
+                    ? `Order ${formatDate(awaiting[0].orderDate)}`
+                    : "Go and order"}
                   <IconArrowRight size={16} />
                 </Link>
               ) : null}

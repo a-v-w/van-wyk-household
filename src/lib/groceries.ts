@@ -5,9 +5,11 @@ import { db } from "@/db";
 import {
   groceryCycles,
   groceryItems,
+  groceryLists,
   type GroceryCategory,
   type GroceryCycle,
   type GroceryItem,
+  type GroceryList,
   type Household,
   type User,
 } from "@/db/schema";
@@ -21,42 +23,96 @@ import {
 } from "@/lib/dates";
 import { CATEGORIES, CATEGORY_LABEL } from "@/lib/grocery-constants";
 
+export { CATEGORIES, CATEGORY_LABEL } from "@/lib/grocery-constants";
+
 export type GroceryItemWithUser = GroceryItem & { addedByUser: User | null };
 
 export type CycleView = {
+  list: GroceryList;
   cycle: GroceryCycle;
   items: GroceryItemWithUser[];
   /** False once the lock time has passed, unless the admin unlocked it. */
   isOpen: boolean;
-  locksAt: Date;
+  /** Null on a standing list, which never closes. */
+  locksAt: Date | null;
 };
 
-export { CATEGORIES, CATEGORY_LABEL } from "@/lib/grocery-constants";
+/* ------------------------------------------------------------------ lists -- */
+
+/** A household always has at least one list; the first one is made on demand. */
+export async function householdLists(
+  household: Household,
+  includeArchived = false,
+): Promise<GroceryList[]> {
+  const rows = await db.query.groceryLists.findMany({
+    where: and(
+      eq(groceryLists.householdId, household.id),
+      includeArchived ? undefined : isNull(groceryLists.archivedAt),
+    ),
+    orderBy: [asc(groceryLists.sortOrder), asc(groceryLists.id)],
+  });
+  if (rows.length > 0 || includeArchived) return rows;
+
+  const [created] = await db
+    .insert(groceryLists)
+    .values({ householdId: household.id, name: "Weekly shop", kind: "weekly" })
+    .returning();
+  return created ? [created] : [];
+}
+
+export async function findList(
+  householdId: number,
+  listId: number,
+): Promise<GroceryList | undefined> {
+  return db.query.groceryLists.findFirst({
+    where: and(
+      eq(groceryLists.id, listId),
+      eq(groceryLists.householdId, householdId),
+    ),
+  });
+}
+
+/** The list a page should show: the one asked for, else the first. */
+export async function resolveList(
+  household: Household,
+  requested?: number | null,
+): Promise<GroceryList> {
+  const lists = await householdLists(household);
+  return lists.find((l) => l.id === requested) ?? lists[0];
+}
+
+const lockWeekdayOf = (list: GroceryList, household: Household) =>
+  list.lockWeekday ?? household.groceryLockWeekday;
+const lockTimeOf = (list: GroceryList, household: Household) =>
+  list.lockTime ?? household.groceryLockTime;
+const orderWeekdayOf = (list: GroceryList, household: Household) =>
+  list.orderWeekday ?? household.groceryOrderWeekday;
 
 /* ------------------------------------------------------------ cycle dates -- */
 
 /** The next date on or after `from` that falls on the given ISO weekday. */
 function nextWeekdayOnOrAfter(from: IsoDate, weekday: number): IsoDate {
-  const diff = (weekday - isoWeekday(from) + 7) % 7;
-  return shiftDate(from, diff);
+  return shiftDate(from, (weekday - isoWeekday(from) + 7) % 7);
 }
 
 /** The next date strictly after `from` that falls on the given ISO weekday. */
 function nextWeekdayAfter(from: IsoDate, weekday: number): IsoDate {
-  const diff = (weekday - isoWeekday(from) + 7) % 7 || 7;
-  return shiftDate(from, diff);
+  return shiftDate(from, (weekday - isoWeekday(from) + 7) % 7 || 7);
 }
 
 /**
- * The lock date of the cycle that is open right now: the next lock weekday,
- * or the one after it when today's lock time has already passed.
+ * The lock date of the cycle that is open right now: the next lock weekday, or
+ * the one after it when today's lock time has already passed.
  */
-export function currentLockDate(household: Household): IsoDate {
+export function currentLockDate(
+  household: Household,
+  list: GroceryList,
+): IsoDate {
   const today = todayIn(household.timezone);
-  const candidate = nextWeekdayOnOrAfter(today, household.groceryLockWeekday);
+  const candidate = nextWeekdayOnOrAfter(today, lockWeekdayOf(list, household));
   const locksAt = instantAt(
     candidate,
-    household.groceryLockTime,
+    lockTimeOf(list, household),
     household.timezone,
   );
   if (nowInZone(household.timezone).getTime() >= locksAt.getTime()) {
@@ -68,74 +124,111 @@ export function currentLockDate(household: Household): IsoDate {
 /** The order date belonging to a lock date. */
 export function orderDateForLock(
   household: Household,
+  list: GroceryList,
   lockDate: IsoDate,
 ): IsoDate {
-  return nextWeekdayAfter(lockDate, household.groceryOrderWeekday);
+  return nextWeekdayAfter(lockDate, orderWeekdayOf(list, household));
+}
+
+/** When the currently open cycle of a list closes, if it ever does. */
+export function nextLockAt(
+  household: Household,
+  list: GroceryList,
+): Date | null {
+  if (list.kind === "standing") return null;
+  return instantAt(
+    currentLockDate(household, list),
+    lockTimeOf(list, household),
+    household.timezone,
+  );
 }
 
 /* ------------------------------------------------------------ cycle access -- */
 
-/** Finds, or creates, the cycle for one order date. */
+/** Finds, or creates, the cycle of one list for one order date. */
 export async function ensureCycle(
   household: Household,
+  list: GroceryList,
   orderDate: IsoDate,
 ): Promise<GroceryCycle> {
   const existing = await db.query.groceryCycles.findFirst({
     where: and(
-      eq(groceryCycles.householdId, household.id),
+      eq(groceryCycles.listId, list.id),
       eq(groceryCycles.orderDate, orderDate),
     ),
   });
   if (existing) return existing;
 
   // Walk back from the order date to the lock weekday that precedes it.
-  const back = (isoWeekday(orderDate) - household.groceryLockWeekday + 7) % 7 || 7;
+  const back =
+    (isoWeekday(orderDate) - lockWeekdayOf(list, household) + 7) % 7 || 7;
   const lockDate = shiftDate(orderDate, -back);
 
   const [created] = await db
     .insert(groceryCycles)
     .values({
       householdId: household.id,
+      listId: list.id,
       orderDate,
       locksAt: instantAt(
         lockDate,
-        household.groceryLockTime,
+        lockTimeOf(list, household),
         household.timezone,
       ),
-    })
-    .onConflictDoNothing({
-      target: [groceryCycles.householdId, groceryCycles.orderDate],
     })
     .returning();
 
   if (created) return created;
-
-  // Another request created it between our read and our insert.
-  const raced = await db.query.groceryCycles.findFirst({
-    where: and(
-      eq(groceryCycles.householdId, household.id),
-      eq(groceryCycles.orderDate, orderDate),
-    ),
-  });
-  if (!raced) throw new Error("Could not create the grocery cycle.");
-  return raced;
+  throw new Error("Could not open the grocery list.");
 }
 
-/** The cycle people are adding to right now. */
+/** The single open cycle of a standing list, made on demand. */
+async function ensureStandingCycle(
+  household: Household,
+  list: GroceryList,
+): Promise<GroceryCycle> {
+  const open = await db.query.groceryCycles.findFirst({
+    where: and(
+      eq(groceryCycles.listId, list.id),
+      isNull(groceryCycles.orderedAt),
+    ),
+    orderBy: [desc(groceryCycles.id)],
+  });
+  if (open) return open;
+
+  const [created] = await db
+    .insert(groceryCycles)
+    .values({
+      householdId: household.id,
+      listId: list.id,
+      orderDate: null,
+      locksAt: null,
+    })
+    .returning();
+
+  if (!created) throw new Error("Could not open the grocery list.");
+  return created;
+}
+
+/** The cycle of a list that people are adding to right now. */
 export async function currentCycle(
   household: Household,
+  list: GroceryList,
 ): Promise<GroceryCycle> {
-  const lockDate = currentLockDate(household);
-  return ensureCycle(household, orderDateForLock(household, lockDate));
+  if (list.kind === "standing") return ensureStandingCycle(household, list);
+  const lockDate = currentLockDate(household, list);
+  return ensureCycle(household, list, orderDateForLock(household, list, lockDate));
 }
 
 export function isCycleOpen(cycle: GroceryCycle): boolean {
   if (cycle.orderedAt) return false;
   if (cycle.unlockedByAdmin) return true;
+  if (cycle.locksAt === null) return true; // a standing list never closes
   return Date.now() < cycle.locksAt.getTime();
 }
 
 export async function loadCycleView(
+  list: GroceryList,
   cycle: GroceryCycle,
 ): Promise<CycleView> {
   const items = (await db.query.groceryItems.findMany({
@@ -145,6 +238,7 @@ export async function loadCycleView(
   })) as GroceryItemWithUser[];
 
   return {
+    list,
     cycle,
     items,
     isOpen: isCycleOpen(cycle),
@@ -152,27 +246,29 @@ export async function loadCycleView(
   };
 }
 
-/** Locked cycles the admin has not finished ordering, oldest first. */
+/** Locked cycles of a list the admin has not finished ordering, oldest first. */
 export async function cyclesAwaitingOrder(
-  household: Household,
+  list: GroceryList,
 ): Promise<GroceryCycle[]> {
-  return db.query.groceryCycles.findMany({
+  const rows = await db.query.groceryCycles.findMany({
     where: and(
-      eq(groceryCycles.householdId, household.id),
+      eq(groceryCycles.listId, list.id),
       isNull(groceryCycles.orderedAt),
       lte(groceryCycles.locksAt, new Date()),
     ),
     orderBy: [asc(groceryCycles.orderDate)],
   });
+  // A standing list has a null lock and is never "awaiting" an order.
+  return rows.filter((c) => c.locksAt !== null);
 }
 
 export async function pastCycles(
-  household: Household,
+  list: GroceryList,
   limit = 12,
 ): Promise<GroceryCycle[]> {
   return db.query.groceryCycles.findMany({
-    where: eq(groceryCycles.householdId, household.id),
-    orderBy: [desc(groceryCycles.orderDate)],
+    where: eq(groceryCycles.listId, list.id),
+    orderBy: [desc(groceryCycles.orderDate), desc(groceryCycles.id)],
     limit,
   });
 }
@@ -187,6 +283,7 @@ export async function addItem(
     quantity?: string | null;
     category?: GroceryCategory;
     note?: string | null;
+    sourceMealId?: number | null;
   },
 ): Promise<void> {
   const name = input.name.trim();
@@ -198,6 +295,7 @@ export async function addItem(
     quantity: input.quantity?.trim() || null,
     category: input.category ?? "other",
     note: input.note?.trim() || null,
+    sourceMealId: input.sourceMealId ?? null,
   });
 }
 
@@ -249,7 +347,7 @@ export async function markOrdered(
     .where(eq(groceryItems.id, itemId));
 }
 
-/** Drops an item from the list with a reason the employee can see. */
+/** Drops an item from the list with a reason the household can see. */
 export async function markDropped(
   itemId: number,
   reason: string | null,
@@ -265,25 +363,34 @@ export async function markDropped(
 }
 
 /**
- * Marks an item unavailable and copies it onto a later list, keeping its
- * quantity, note and a count of how many times it has been carried.
+ * Marks an item unavailable and copies it onto a later cycle of the same list,
+ * keeping its quantity, note and a count of how many times it has been carried.
  */
 export async function carryOver(
   household: Household,
   itemId: number,
   targetOrderDate?: IsoDate,
-): Promise<{ targetOrderDate: IsoDate } | null> {
+): Promise<{ targetOrderDate: IsoDate | null } | null> {
   const item = await loadItem(itemId);
-  if (!item) return null;
+  if (!item || item.cycle.listId === null) return null;
 
-  const orderDate =
-    targetOrderDate ??
-    orderDateForLock(household, currentLockDate(household));
+  const list = await findList(household.id, item.cycle.listId);
+  if (!list) return null;
 
-  // Never carry an item onto the list it is already on.
-  if (orderDate <= item.cycle.orderDate) return null;
+  let target: GroceryCycle;
+  let orderDate: IsoDate | null = null;
 
-  const target = await ensureCycle(household, orderDate);
+  if (list.kind === "standing") {
+    // Nothing to schedule; it goes back onto the one open cycle.
+    target = await ensureStandingCycle(household, list);
+    if (target.id === item.cycle.id) return null;
+  } else {
+    orderDate =
+      targetOrderDate ??
+      orderDateForLock(household, list, currentLockDate(household, list));
+    if (item.cycle.orderDate && orderDate <= item.cycle.orderDate) return null;
+    target = await ensureCycle(household, list, orderDate);
+  }
 
   await db
     .update(groceryItems)
@@ -300,6 +407,7 @@ export async function carryOver(
     status: "pending",
     carriedFromItemId: item.id,
     carryCount: item.carryCount + 1,
+    sourceMealId: item.sourceMealId,
   });
 
   return { targetOrderDate: orderDate };
@@ -332,9 +440,11 @@ export async function setCycleUnlocked(
 
 /* ----------------------------------------------------------------- export -- */
 
-/** The locked list as plain lines, for pasting into a shop's own app. */
+/** The list as plain lines, for pasting into a shop's own app. */
 export function itemsAsText(items: GroceryItem[]): string {
-  const live = items.filter((i) => i.status === "pending" || i.status === "ordered");
+  const live = items.filter(
+    (i) => i.status === "pending" || i.status === "ordered",
+  );
   const byCategory = new Map<GroceryCategory, GroceryItem[]>();
   for (const item of live) {
     const list = byCategory.get(item.category) ?? [];

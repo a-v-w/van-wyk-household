@@ -15,6 +15,7 @@ import {
   markDropped,
   markOrdered,
   removeItem,
+  resolveList,
   setCycleUnlocked,
   updateItem,
 } from "@/lib/groceries";
@@ -48,11 +49,16 @@ export async function addGroceryItem(
   const name = String(formData.get("name") ?? "").trim();
   if (!name) return { error: "Type what you need first." };
 
-  const cycle = await currentCycle(viewer.household);
+  const list = await resolveList(
+    viewer.household,
+    Number(formData.get("listId") ?? 0) || null,
+  );
+  if (!list) return { error: "There is no grocery list to add to." };
+
+  const cycle = await currentCycle(viewer.household, list);
   if (!isCycleOpen(cycle) && !viewer.isAdmin) {
     return {
-      error:
-        "This week's list is locked. Anything new now goes onto next week's list.",
+      error: `"${list.name}" is locked for this week. Anything new now goes onto the next one.`,
     };
   }
 

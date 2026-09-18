@@ -3,17 +3,19 @@ import { IconArrowRight, IconLock } from "@/components/ui";
 import { countdown, formatDate, type IsoDate } from "@/lib/dates";
 
 /**
- * The Friday nudge. It only appears on the day the list locks, and it counts
+ * The lock-day nudge. It only appears on the day a list closes, and counts
  * down to the minute so there is no guessing how long is left.
  */
 export function LockBanner({
+  listName,
   locksAt,
   orderDate,
   itemCount,
   href = "/groceries",
 }: {
+  listName: string;
   locksAt: Date;
-  orderDate: IsoDate;
+  orderDate: IsoDate | null;
   itemCount: number;
   href?: string;
 }) {
@@ -27,7 +29,7 @@ export function LockBanner({
       <IconLock size={22} className="flex-none text-lock" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="text-sm font-extrabold text-lock">
-          The grocery list locks today at{" "}
+          {listName} closes today at{" "}
           {locksAt.toLocaleTimeString("en-ZA", {
             hour: "2-digit",
             minute: "2-digit",
@@ -35,7 +37,9 @@ export function LockBanner({
           })}
         </span>
         <span className="text-[13px] leading-snug text-lock">
-          Add anything you need for the order on {formatDate(orderDate)}.{" "}
+          {orderDate
+            ? `Add anything you need for the order on ${formatDate(orderDate)}. `
+            : "Add anything you need before it closes. "}
           <span className="font-mono font-semibold tabular">{left}</span> left,
           and {itemCount} {itemCount === 1 ? "item" : "items"} on it so far.
         </span>
@@ -44,4 +48,3 @@ export function LockBanner({
     </Link>
   );
 }
-

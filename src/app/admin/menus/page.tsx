@@ -18,7 +18,9 @@ import {
   type IsoDate,
 } from "@/lib/dates";
 import { loadMeals, type MealWithPrep } from "@/lib/meals";
+import { householdLists } from "@/lib/groceries";
 import { recipeOptions } from "@/lib/recipes";
+import { shoppedMealIds } from "@/lib/shopping";
 import { loadCalendars } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
@@ -50,6 +52,9 @@ export default async function AdminMenusPage({
   );
   const meals = await loadMeals(household.id, monday, week[6], calendars);
   const recipes = await recipeOptions(household.id);
+  const lists = await householdLists(household);
+  // Which dishes have already been shopped for, so the button says so.
+  const shopped = await shoppedMealIds(household.id, monday, week[6]);
 
   function entries(date: IsoDate, slot: "lunch" | "dinner"): MenuEntry[] {
     return meals
@@ -58,6 +63,7 @@ export default async function AdminMenusPage({
         id: m.id,
         dish: m.dish,
         recipeId: m.recipeId,
+        onShoppingList: shopped.has(m.id),
         forWhom: m.forWhom ?? "",
         notes: m.notes ?? "",
         prepTiming: m.prepTiming,
@@ -131,6 +137,7 @@ export default async function AdminMenusPage({
         monday={monday}
         previousMonday={shiftDate(monday, -7)}
         recipes={recipes}
+        groceryLists={lists.map((l) => ({ id: l.id, name: l.name }))}
       />
     </div>
   );

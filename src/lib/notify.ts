@@ -6,6 +6,7 @@ import { db } from "@/db";
 import {
   notificationLog,
   type GroceryItem,
+  type GroceryList,
   type Household,
   type User,
 } from "@/db/schema";
@@ -24,24 +25,27 @@ export async function claimNotification(
   kind: NotificationKind,
   sentForDate: IsoDate,
   recipientUserId: number,
+  listId: number,
 ): Promise<boolean> {
   const existing = await db.query.notificationLog.findFirst({
     where: and(
       eq(notificationLog.kind, kind),
       eq(notificationLog.sentForDate, sentForDate),
       eq(notificationLog.recipientUserId, recipientUserId),
+      eq(notificationLog.listId, listId),
     ),
   });
   if (existing) return false;
 
   const inserted = await db
     .insert(notificationLog)
-    .values({ householdId, kind, sentForDate, recipientUserId })
+    .values({ householdId, kind, sentForDate, recipientUserId, listId })
     .onConflictDoNothing({
       target: [
         notificationLog.kind,
         notificationLog.sentForDate,
         notificationLog.recipientUserId,
+        notificationLog.listId,
       ],
     })
     .returning();
@@ -83,18 +87,21 @@ export async function sendEmail(
 
 export function lockReminderEmail(
   household: Household,
+  list: GroceryList,
   person: User,
-  orderDate: IsoDate,
+  orderDate: IsoDate | null,
   itemCount: number,
   lockTime: string,
 ): { subject: string; text: string } {
   const first = person.name.split(/\s+/)[0];
   return {
-    subject: `Grocery list closes at ${lockTime.slice(0, 5)} today`,
+    subject: `${list.name} closes at ${lockTime.slice(0, 5)} today`,
     text: [
       `Hi ${first},`,
       "",
-      `Today is the last day to add to the grocery list for the order on ${formatDate(orderDate)}.`,
+      orderDate
+        ? `Today is the last day to add to the ${list.name.toLowerCase()} for the order on ${formatDate(orderDate)}.`
+        : `Today is the last day to add to the ${list.name.toLowerCase()}.`,
       `It closes at ${lockTime.slice(0, 5)} and has ${itemCount} ${itemCount === 1 ? "item" : "items"} on it so far.`,
       "",
       "Open the app and add anything the house is running low on.",
@@ -106,8 +113,9 @@ export function lockReminderEmail(
 
 export function orderReminderEmail(
   household: Household,
+  list: GroceryList,
   person: User,
-  orderDate: IsoDate,
+  orderDate: IsoDate | null,
   items: GroceryItem[],
 ): { subject: string; text: string } {
   const first = person.name.split(/\s+/)[0];
@@ -117,7 +125,9 @@ export function orderReminderEmail(
   const lines = [
     `Hi ${first},`,
     "",
-    `The grocery list for ${formatDate(orderDate)} is locked: ${pending.length} ${pending.length === 1 ? "item" : "items"} to order.`,
+    orderDate
+      ? `The ${list.name.toLowerCase()} for ${formatDate(orderDate)} is closed: ${pending.length} ${pending.length === 1 ? "item" : "items"} to order.`
+      : `The ${list.name.toLowerCase()} has ${pending.length} ${pending.length === 1 ? "item" : "items"} waiting.`,
   ];
 
   if (carried.length > 0) {
@@ -150,7 +160,7 @@ export function orderReminderEmail(
   lines.push(household.name);
 
   return {
-    subject: `${pending.length} ${pending.length === 1 ? "item" : "items"} to order today`,
+    subject: `${list.name}: ${pending.length} ${pending.length === 1 ? "item" : "items"} to order today`,
     text: lines.join("\n"),
   };
 }

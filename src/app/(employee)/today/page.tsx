@@ -16,6 +16,7 @@ import {
   currentCycle,
   currentLockDate,
   loadCycleView,
+  resolveList,
 } from "@/lib/groceries";
 import { loadDayKitchen, SLOT_LABEL } from "@/lib/meals";
 import { describeRule, loadOccurrences } from "@/lib/tasks";
@@ -34,7 +35,7 @@ export default async function TodayPage() {
   const calendar = calendars.for(user.id);
   const working = calendar.isWorking(today);
 
-  const [occurrences, kitchen, cycle] = await Promise.all([
+  const [occurrences, kitchen, list] = await Promise.all([
     loadOccurrences({
       householdId: household.id,
       from: today,
@@ -44,13 +45,18 @@ export default async function TodayPage() {
       includeOverdue: true,
     }),
     loadDayKitchen(household.id, today, calendars),
-    currentCycle(household),
+    resolveList(household),
   ]);
 
-  const view = await loadCycleView(cycle);
-  // Only nudge on the day this list actually locks, and only before it does.
-  const showLockBanner = currentLockDate(household) === today;
-  const pendingCount = view.items.filter((i) => i.status === "pending").length;
+  // Only the list that closes today nudges, and only before it closes.
+  const cycle = list ? await currentCycle(household, list) : null;
+  const view = cycle && list ? await loadCycleView(list, cycle) : null;
+  const showLockBanner =
+    Boolean(list) &&
+    list.kind === "weekly" &&
+    currentLockDate(household, list) === today;
+  const pendingCount =
+    view?.items.filter((i) => i.status === "pending").length ?? 0;
 
   const done = occurrences.filter((o) => o.done).length;
   const total = occurrences.length;
@@ -66,11 +72,13 @@ export default async function TodayPage() {
         </h1>
       </header>
 
-      {showLockBanner ? (
+      {showLockBanner && view?.locksAt && list && cycle ? (
         <LockBanner
+          listName={list.name}
           locksAt={view.locksAt}
           orderDate={cycle.orderDate}
           itemCount={pendingCount}
+          href={`/groceries?list=${list.id}`}
         />
       ) : null}
 

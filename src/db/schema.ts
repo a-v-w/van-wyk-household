@@ -302,6 +302,39 @@ export const mealCompletions = pgTable(
 
 /* ------------------------------------------------------------ groceries -- */
 
+/** How a list behaves: on the weekly lock-and-order rhythm, or always open. */
+export const groceryListKind = pgEnum("grocery_list_kind", [
+  "weekly",
+  "standing",
+]);
+
+/**
+ * A household keeps several lists: the weekly shop, the pharmacy, the hardware
+ * run. Each has its own items and its own rhythm.
+ */
+export const groceryLists = pgTable(
+  "grocery_lists",
+  {
+    id: serial("id").primaryKey(),
+    householdId: integer("household_id")
+      .notNull()
+      .references(() => households.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    kind: groceryListKind("kind").notNull().default("weekly"),
+    /** Weekly lists only; null means fall back to the household setting. */
+    lockWeekday: smallint("lock_weekday"),
+    lockTime: time("lock_time"),
+    orderWeekday: smallint("order_weekday"),
+    /** The order the lists are shown in. */
+    sortOrder: smallint("sort_order").notNull().default(0),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("grocery_lists_household_idx").on(t.householdId)],
+);
+
 export const groceryCycles = pgTable(
   "grocery_cycles",
   {
@@ -309,21 +342,20 @@ export const groceryCycles = pgTable(
     householdId: integer("household_id")
       .notNull()
       .references(() => households.id, { onDelete: "cascade" }),
-    /** The date the admin places this cycle's order. */
-    orderDate: date("order_date").notNull(),
-    locksAt: timestamp("locks_at", { withTimezone: true }).notNull(),
+    listId: integer("list_id").references(() => groceryLists.id, {
+      onDelete: "cascade",
+    }),
+    /** The date the order is placed. Null on a standing list, which has none. */
+    orderDate: date("order_date"),
+    /** When it closes to everyone but an admin. Null means it never closes. */
+    locksAt: timestamp("locks_at", { withTimezone: true }),
     unlockedByAdmin: boolean("unlocked_by_admin").notNull().default(false),
     orderedAt: timestamp("ordered_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
   },
-  (t) => [
-    unique("grocery_cycles_household_order_date_unique").on(
-      t.householdId,
-      t.orderDate,
-    ),
-  ],
+  (t) => [index("grocery_cycles_list_idx").on(t.listId, t.orderDate)],
 );
 
 export const groceryItems = pgTable(
@@ -343,6 +375,10 @@ export const groceryItems = pgTable(
     status: groceryStatus("status").notNull().default("pending"),
     /** The item this one was carried over from, when out of stock. */
     carriedFromItemId: integer("carried_from_item_id"),
+    /** The meal whose recipe put this here, so it is never added twice. */
+    sourceMealId: integer("source_meal_id").references(() => meals.id, {
+      onDelete: "set null",
+    }),
     carryCount: smallint("carry_count").notNull().default(0),
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     resolutionNote: text("resolution_note"),
@@ -367,13 +403,18 @@ export const notificationLog = pgTable(
     recipientUserId: integer("recipient_user_id").references(() => users.id, {
       onDelete: "cascade",
     }),
+    /** Which list it was about, so two lists closing the same day both send. */
+    listId: integer("list_id").references(() => groceryLists.id, {
+      onDelete: "cascade",
+    }),
     sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    unique("notification_log_kind_date_recipient_unique").on(
+    unique("notification_log_kind_date_recipient_list_unique").on(
       t.kind,
       t.sentForDate,
       t.recipientUserId,
+      t.listId,
     ),
   ],
 );
@@ -461,12 +502,24 @@ export const mealCompletionsRelations = relations(
   }),
 );
 
+export const groceryListsRelations = relations(groceryLists, ({ one, many }) => ({
+  household: one(households, {
+    fields: [groceryLists.householdId],
+    references: [households.id],
+  }),
+  cycles: many(groceryCycles),
+}));
+
 export const groceryCyclesRelations = relations(
   groceryCycles,
   ({ one, many }) => ({
     household: one(households, {
       fields: [groceryCycles.householdId],
       references: [households.id],
+    }),
+    list: one(groceryLists, {
+      fields: [groceryCycles.listId],
+      references: [groceryLists.id],
     }),
     items: many(groceryItems),
   }),
@@ -498,6 +551,9 @@ export type NewMeal = typeof meals.$inferInsert;
 export type Recipe = typeof recipes.$inferSelect;
 export type NewRecipe = typeof recipes.$inferInsert;
 export type MealCompletion = typeof mealCompletions.$inferSelect;
+export type GroceryList = typeof groceryLists.$inferSelect;
+export type NewGroceryList = typeof groceryLists.$inferInsert;
+export type GroceryListKind = (typeof groceryListKind.enumValues)[number];
 export type GroceryCycle = typeof groceryCycles.$inferSelect;
 export type GroceryItem = typeof groceryItems.$inferSelect;
 export type NewGroceryItem = typeof groceryItems.$inferInsert;

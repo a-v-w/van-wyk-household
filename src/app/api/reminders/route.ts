@@ -12,6 +12,7 @@ import {
   currentCycle,
   currentLockDate,
   cyclesAwaitingOrder,
+  householdLists,
   loadCycleView,
 } from "@/lib/groceries";
 import { householdMembers } from "@/lib/auth";
@@ -55,10 +56,15 @@ async function runFor(householdId: number) {
   const members = await householdMembers(household.id);
   const sent: string[] = [];
 
-  // Lock day: nudge everyone who is not the admin to get their items in.
-  if (currentLockDate(household) === today) {
-    const cycle = await currentCycle(household);
-    const view = await loadCycleView(cycle);
+  // Each list closes on its own day, so walk them all.
+  const lists = await householdLists(household);
+
+  for (const list of lists) {
+    if (list.kind !== "weekly") continue;
+    if (currentLockDate(household, list) !== today) continue;
+
+    const cycle = await currentCycle(household, list);
+    const view = await loadCycleView(list, cycle);
     const count = view.items.filter((i) => i.status === "pending").length;
 
     for (const person of members.filter((m) => m.role === "employee")) {
@@ -67,46 +73,55 @@ async function runFor(householdId: number) {
         "employee_grocery_reminder",
         today,
         person.id,
+        list.id,
       );
       if (!fresh) continue;
 
       const mail = lockReminderEmail(
         household,
+        list,
         person,
         cycle.orderDate,
         count,
-        household.groceryLockTime,
+        list.lockTime ?? household.groceryLockTime,
       );
       const outcome = await sendEmail(person.email, mail.subject, mail.text);
-      sent.push(`lock reminder to ${person.name}: ${outcome.sent ? "sent" : outcome.reason}`);
+      sent.push(
+        `${list.name} nudge to ${person.name}: ${outcome.sent ? "sent" : outcome.reason}`,
+      );
     }
   }
 
-  // Order day: tell the admin what is waiting, carried-over items called out.
-  if (weekday === household.groceryOrderWeekday) {
-    const awaiting = await cyclesAwaitingOrder(household);
+  // Order day: tell the admins what is waiting, carried-over items called out.
+  for (const list of lists) {
+    if (list.kind !== "weekly") continue;
+    if (weekday !== (list.orderWeekday ?? household.groceryOrderWeekday)) continue;
+
+    const awaiting = await cyclesAwaitingOrder(list);
     const cycle = awaiting[0];
 
     if (cycle) {
-      const view = await loadCycleView(cycle);
+      const view = await loadCycleView(list, cycle);
       for (const person of members.filter((m) => m.role === "admin")) {
         const fresh = await claimNotification(
           household.id,
           "admin_order_reminder",
           today,
           person.id,
+          list.id,
         );
         if (!fresh) continue;
 
         const mail = orderReminderEmail(
           household,
+          list,
           person,
           cycle.orderDate,
           view.items,
         );
         const outcome = await sendEmail(person.email, mail.subject, mail.text);
         sent.push(
-          `order reminder to ${person.name}: ${outcome.sent ? "sent" : outcome.reason}`,
+          `${list.name} order reminder to ${person.name}: ${outcome.sent ? "sent" : outcome.reason}`,
         );
       }
     }

@@ -1,8 +1,15 @@
 import type { Metadata } from "next";
 import { HouseholdForm, OwnAccountForm } from "@/app/admin/settings/settings-forms";
+import { GroceryListsManager } from "@/components/grocery-lists-manager";
 import { PeopleManager } from "@/components/people-manager";
 import { Card } from "@/components/ui";
 import { allHouseholdMembers, requireAdmin } from "@/lib/auth";
+import { WEEKDAY_NAMES } from "@/lib/dates";
+import {
+  currentCycle,
+  householdLists,
+  loadCycleView,
+} from "@/lib/groceries";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +19,23 @@ export default async function SettingsPage() {
   const viewer = await requireAdmin();
   const { household, user } = viewer;
   const people = await allHouseholdMembers(household.id);
+
+  const lists = await householdLists(household, true);
+  const listRows = await Promise.all(
+    lists.map(async (list) => {
+      const cycle = await currentCycle(household, list);
+      const view = await loadCycleView(list, cycle);
+      return {
+        id: list.id,
+        name: list.name,
+        kind: list.kind,
+        archived: list.archivedAt !== null,
+        openItems: view.items.filter((i) => i.status === "pending").length,
+      };
+    }),
+  );
+
+  const lockSummary = `${WEEKDAY_NAMES[household.groceryLockWeekday - 1]}s at ${household.groceryLockTime.slice(0, 5)}, ordered on ${WEEKDAY_NAMES[household.groceryOrderWeekday - 1]}`;
 
 
   return (
@@ -61,6 +85,17 @@ export default async function SettingsPage() {
             reminderTime: household.reminderTime,
           }}
         />
+      </Card>
+
+      <Card className="p-5 lg:p-6">
+        <h2 className="mb-1 text-lg font-extrabold tracking-tight">
+          Grocery lists
+        </h2>
+        <p className="mb-5 text-sm text-ink-2">
+          One for the weekly shop, and as many others as the household runs:
+          the chemist, the hardware shop, the butcher.
+        </p>
+        <GroceryListsManager lists={listRows} lockSummary={lockSummary} />
       </Card>
 
       <Card className="p-5 lg:p-6">

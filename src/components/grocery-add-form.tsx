@@ -14,11 +14,14 @@ import { CATEGORIES, CATEGORY_LABEL } from "@/lib/grocery-constants";
 export function GroceryAddForm({
   disabled,
   cycleId,
+  listId,
   placeholder = "Add an item, e.g. Milk",
 }: {
   disabled?: boolean;
-  /** Add straight onto this list instead of whichever one is open. */
+  /** Add straight onto this cycle, whatever its lock says. Admin only. */
   cycleId?: number;
+  /** Which list the item belongs on. */
+  listId?: number;
   placeholder?: string;
 }) {
   const [state, action, pending] = useActionState<GroceryFormState, FormData>(
@@ -40,6 +43,7 @@ export function GroceryAddForm({
       {cycleId ? (
         <input type="hidden" name="cycleId" value={cycleId} />
       ) : null}
+      {listId ? <input type="hidden" name="listId" value={listId} /> : null}
       {/* The widths live on the wrappers: two width utilities on one input
           fight in the cascade and the loser collapses. */}
       <div className="flex gap-2">

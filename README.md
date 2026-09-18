@@ -7,7 +7,7 @@ Five areas:
 - **Tasks** — once-off and recurring, each with an assignee.
 - **Menus** — lunch and dinner for every day, with as many dishes per sitting as the household needs and each marked "on the day" or "day before".
 - **Recipes** — the household's own cookbook, written by anyone who works here and linkable from any dish on the menu.
-- **Groceries** — a weekly list that locks on Friday evening, is ordered on Monday, and carries out-of-stock items onto the next list.
+- **Groceries** — as many lists as the household runs. A weekly one locks on Friday evening, is ordered on Monday, and carries out-of-stock items onto the next list; a standing one, for the chemist or the hardware shop, never closes.
 - **Reminders** — a lock-day nudge and an order-day summary, by email and in the app.
 
 Plus **attendance**: every date can be recorded as worked, off, sick or on leave, and the dashboard totals it for the month.
@@ -56,6 +56,7 @@ That fills in sample tasks, a two-week menu and two grocery lists. It deletes ev
 - **Day-before meal prep** lands on the last day actually worked. A Monday dinner prepped in advance shows up on Friday when nobody works the weekend, and on Saturday when they do.
 - **A meal slot holds several dishes**, each optionally named for a person, because households often eat differently at the same sitting. A slot with nothing planned does not appear on the menu at all.
 - **Recipes** attach to a dish, so the method is there with the meal rather than being asked for. Anyone can write one; you can edit your own, and an admin can edit any.
+- **A recipe's ingredients go straight to a grocery list.** On the menu, a dish with a recipe carries an "Add ingredients" button. Quantities are split from names, aisles are guessed, and each item says which dish it is for. Pressing it twice adds nothing twice, and Undo takes them back off.
 - **The grocery list** opens the moment the previous one locks, locks the following Friday at 18:00 household time, and is ordered on the Monday after that. Anything added after the lock lands on the next list automatically. The lock is enforced on the server by comparing the time, not by a scheduled job, so it cannot be missed. It binds the employee only: the admin can add to, edit and remove from any list at any time.
 - **Ordering** gives each item one of three outcomes: ordered, out of stock, or not needed. Out of stock moves the item onto a later list, keeping its quantity, its note and a count of how many times it has moved.
 

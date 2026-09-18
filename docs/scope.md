@@ -150,10 +150,18 @@ The household keeps its own cookbook, written by anyone who works here: name, on
 
 ---
 
-## 5. Grocery list
+## 5. Grocery lists
+
+### Several lists
+A household rarely has one list. Settings holds as many as you need, each with a name and one of two rhythms:
+
+- **On the weekly rhythm** — the weekly shop below: opens, locks on Friday evening, ordered on Monday.
+- **Always open** — the chemist, the hardware shop, the butcher. It never locks; you close it by hand when you have been. Anything added simply waits until then.
+
+Every list keeps its own cycles, its own history and its own Friday reminder, so a locked weekly shop never stops anyone putting a light bulb on the hardware list. The employee's page shows the lists as tabs with a count on each. A list you no longer run is **put away** rather than deleted, so its history survives; the last remaining list cannot be put away.
 
 ### Cycles
-The list runs in weekly **cycles** tied to the Monday you order on. A cycle:
+Each weekly list runs in weekly **cycles** tied to the Monday you order on. A cycle:
 
 - **opens** the moment the previous one locks (Friday 18:00),
 - **locks** the following Friday at 18:00 household time,
@@ -174,6 +182,11 @@ Once locked, the admin works through the list and gives each item one of three o
 | **Not needed** | Removed from the list with a reason, so the employee can see it was seen and dropped rather than forgotten. |
 
 When every item has an outcome, the cycle is marked ordered.
+
+### From a recipe
+A dish on the menu with a recipe attached carries an **Add ingredients** button. Pressing it copies the recipe's ingredients onto a grocery list — it asks which one when the household has more than one — splitting `500 g chicken breast` into a quantity and a name, guessing the aisle, and noting `For Lasagne` on each so you know why it is there.
+
+Each item remembers the dish that put it there. That is what makes the button safe: pressing it twice adds nothing twice, the dish shows **On the list** once it has been done, and **Undo** removes exactly the items it added and nothing else. The lock applies as it does to anything else — the employee cannot send ingredients to a locked list, the admin can.
 
 ### Reminders for carried-over items
 - The next cycle's list opens with a **"Carried over from last week"** group at the top, so both of you see it immediately.

@@ -6,17 +6,12 @@ import {
 } from "@/components/grocery-admin-controls";
 import { GroceryAddForm } from "@/components/grocery-add-form";
 import { GroceryItemRow } from "@/components/grocery-item-row";
+import { GroceryListTabs } from "@/components/grocery-list-tabs";
 import {
   GroceryOutcomeRow,
   type OutcomeRowData,
 } from "@/components/grocery-outcome-row";
-import {
-  Card,
-  CardHeader,
-  Chip,
-  Empty,
-  IconLock,
-} from "@/components/ui";
+import { Card, CardHeader, Chip, Empty, IconLock } from "@/components/ui";
 import { firstName, householdEmployee, requireAdmin } from "@/lib/auth";
 import { formatDate, formatDayDate, shiftDate, todayIn } from "@/lib/dates";
 import {
@@ -25,39 +20,99 @@ import {
   currentLockDate,
   cyclesAwaitingOrder,
   groupByCategory,
+  householdLists,
   itemsAsText,
   loadCycleView,
   orderDateForLock,
   pastCycles,
+  resolveList,
 } from "@/lib/groceries";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Groceries" };
 
-export default async function AdminGroceriesPage() {
+export default async function AdminGroceriesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ list?: string }>;
+}) {
   const viewer = await requireAdmin();
   const { household } = viewer;
   const today = todayIn(household.timezone);
+  const params = await searchParams;
 
   const employee = await householdEmployee(household.id);
   const employeeName = employee ? firstName(employee) : null;
 
-  const open = await currentCycle(household);
-  const openView = await loadCycleView(open);
-  const awaiting = await cyclesAwaitingOrder(household);
-  const toOrder = awaiting[0] ?? null;
-  const orderView = toOrder ? await loadCycleView(toOrder) : null;
-  const past = await pastCycles(household, 8);
-
-  const nextOrderDate = orderDateForLock(
+  const lists = await householdLists(household);
+  const list = await resolveList(
     household,
-    currentLockDate(household),
+    params.list ? Number(params.list) : null,
   );
-  const laterOptions = [0, 7, 14].map((offset) => {
-    const date = shiftDate(nextOrderDate, offset);
-    return { orderDate: date, label: formatDayDate(date) };
-  });
+
+  if (!list) {
+    return (
+      <div className="flex flex-col gap-4 px-5 py-6 lg:px-8 lg:py-8">
+        <h1 className="text-3xl leading-tight font-extrabold tracking-tight">
+          Groceries
+        </h1>
+        <Card>
+          <Empty
+            title="No lists yet"
+            hint="Make one in Settings and it appears here."
+          />
+        </Card>
+      </div>
+    );
+  }
+
+  const open = await currentCycle(household, list);
+  const openView = await loadCycleView(list, open);
+  const awaiting = await cyclesAwaitingOrder(list);
+  const toOrder = awaiting.find((c) => c.id !== open.id) ?? null;
+  const orderView = toOrder ? await loadCycleView(list, toOrder) : null;
+  const past = await pastCycles(list, 8);
+
+  const counts = new Map<number, number>();
+  for (const other of lists) {
+    const otherCycle = await currentCycle(household, other);
+    const otherView = await loadCycleView(other, otherCycle);
+    counts.set(
+      other.id,
+      otherView.items.filter((i) => i.status === "pending").length,
+    );
+  }
+
+  const nextOrderDate =
+    list.kind === "weekly"
+      ? orderDateForLock(household, list, currentLockDate(household, list))
+      : null;
+  const laterOptions = nextOrderDate
+    ? [0, 7, 14].map((offset) => {
+        const date = shiftDate(nextOrderDate, offset);
+        return { orderDate: date, label: formatDayDate(date) };
+      })
+    : [];
+
+  function toRow(
+    item: Awaited<ReturnType<typeof loadCycleView>>["items"][number],
+  ): OutcomeRowData {
+    return {
+      id: item.id,
+      name: item.name,
+      quantity: item.quantity,
+      note: item.note,
+      category: item.category,
+      status: item.status,
+      addedByName: item.addedByUser?.name ?? null,
+      addedByRole: item.addedByUser?.role ?? null,
+      carryCount: item.carryCount,
+      resolutionNote: item.resolutionNote,
+      nextListLabel: nextOrderDate ? formatDate(nextOrderDate) : "the next list",
+      laterOptions,
+    };
+  }
 
   return (
     <div className="flex flex-col gap-6 px-5 py-6 lg:px-8 lg:py-8">
@@ -70,18 +125,24 @@ export default async function AdminGroceriesPage() {
         </h1>
       </header>
 
+      <GroceryListTabs
+        lists={lists}
+        current={list}
+        basePath="/admin/groceries"
+        counts={counts}
+      />
+
       {orderView && toOrder ? (
         <section className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
               <h2 className="text-xl font-extrabold tracking-tight">
-                To order on {formatDate(toOrder.orderDate)}
+                {list.name} to order
+                {toOrder.orderDate ? ` on ${formatDate(toOrder.orderDate)}` : ""}
               </h2>
               <Chip tone={orderView.isOpen ? "accent" : "lock"}>
                 <IconLock size={14} />
-                {orderView.isOpen
-                  ? "Unlocked by you"
-                  : `Locked ${formatDayDate(toOrder.locksAt.toISOString().slice(0, 10))}`}
+                {orderView.isOpen ? "Unlocked by you" : "Closed"}
               </Chip>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -102,16 +163,14 @@ export default async function AdminGroceriesPage() {
           <OrderProgress items={orderView.items.map((i) => i.status)} />
 
           <Card className="p-4">
-            <p className="label mb-2">
-              Forgot something? Add it to this list
-            </p>
+            <p className="label mb-2">Forgot something? Add it to this list</p>
             <GroceryAddForm
               cycleId={toOrder.id}
               placeholder="Add to this order, e.g. Coffee"
             />
             <p className="mt-2 text-xs text-muted">
-              This list is locked to {employeeName ?? "the household"}, but not
-              to you. Use the pencil on any row to correct or remove it.
+              Closed to {employeeName ?? "the household"}, but not to you. Use
+              the pencil on any row to correct or remove it.
             </p>
           </Card>
 
@@ -122,13 +181,11 @@ export default async function AdminGroceriesPage() {
           ) : (
             <>
               <OutcomeGroup
-                title="Carried over from last week"
+                title="Carried over"
                 tone="lock"
                 rows={orderView.items
                   .filter((i) => i.carryCount > 0)
-                  .map((item) =>
-                    toRow(item, nextOrderDate, laterOptions),
-                  )}
+                  .map(toRow)}
               />
               {groupByCategory(
                 orderView.items.filter((i) => i.carryCount === 0),
@@ -136,9 +193,7 @@ export default async function AdminGroceriesPage() {
                 <OutcomeGroup
                   key={group.category}
                   title={CATEGORY_LABEL[group.category]}
-                  rows={group.items.map((item) =>
-                    toRow(item, nextOrderDate, laterOptions),
-                  )}
+                  rows={group.items.map(toRow)}
                 />
               ))}
             </>
@@ -150,12 +205,22 @@ export default async function AdminGroceriesPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-3">
             <h2 className="text-xl font-extrabold tracking-tight">
-              Building for {formatDate(open.orderDate)}
+              {open.orderDate
+                ? `Building for ${formatDate(open.orderDate)}`
+                : `${list.name}, always open`}
             </h2>
-            <Chip tone={currentLockDate(household) === today ? "lock" : "neutral"}>
-              Locks {formatDate(currentLockDate(household))} at{" "}
-              {household.groceryLockTime.slice(0, 5)}
-            </Chip>
+            {list.kind === "weekly" ? (
+              <Chip
+                tone={
+                  currentLockDate(household, list) === today ? "lock" : "neutral"
+                }
+              >
+                Closes {formatDate(currentLockDate(household, list))} at{" "}
+                {(list.lockTime ?? household.groceryLockTime).slice(0, 5)}
+              </Chip>
+            ) : (
+              <Chip>Never closes</Chip>
+            )}
           </div>
         </div>
 
@@ -164,8 +229,8 @@ export default async function AdminGroceriesPage() {
             {openView.items.length === 0 ? (
               <Card>
                 <Empty
-                  title="Nothing on next week's list yet"
-                  hint="Items either of you add land here until the list locks."
+                  title="Nothing on this one yet"
+                  hint="Items anyone adds land here until it closes."
                 />
               </Card>
             ) : (
@@ -232,11 +297,26 @@ export default async function AdminGroceriesPage() {
           <div className="flex flex-col gap-4">
             <Card className="p-4">
               <p className="label mb-2">Add an item</p>
-              <GroceryAddForm />
+              <GroceryAddForm listId={list.id} />
             </Card>
 
+            {list.kind === "standing" ? (
+              <Card className="p-4">
+                <p className="label mb-2">Done with this run?</p>
+                <p className="mb-3 text-[13px] text-ink-2">
+                  Closing it files everything as bought and starts a fresh list.
+                </p>
+                <FinishOrderingButton
+                  cycleId={open.id}
+                  remaining={
+                    openView.items.filter((i) => i.status === "pending").length
+                  }
+                />
+              </Card>
+            ) : null}
+
             <Card>
-              <CardHeader title="Past lists" />
+              <CardHeader title="Past runs" />
               <ul className="px-5 pt-1 pb-4">
                 {past
                   .filter((c) => c.orderedAt)
@@ -245,16 +325,22 @@ export default async function AdminGroceriesPage() {
                       key={cycle.id}
                       className="flex items-center justify-between gap-3 border-b border-line py-2 text-sm last:border-b-0"
                     >
-                      <span>{formatDate(cycle.orderDate)}</span>
+                      <span>
+                        {cycle.orderDate
+                          ? formatDate(cycle.orderDate)
+                          : cycle.orderedAt
+                            ? formatDate(
+                                cycle.orderedAt.toISOString().slice(0, 10),
+                              )
+                            : "—"}
+                      </span>
                       <span className="font-mono text-xs text-muted">
                         ordered
                       </span>
                     </li>
                   ))}
                 {past.filter((c) => c.orderedAt).length === 0 ? (
-                  <li className="py-2 text-sm text-muted">
-                    None ordered yet.
-                  </li>
+                  <li className="py-2 text-sm text-muted">None ordered yet.</li>
                 ) : null}
               </ul>
             </Card>
@@ -263,27 +349,6 @@ export default async function AdminGroceriesPage() {
       </section>
     </div>
   );
-}
-
-function toRow(
-  item: Awaited<ReturnType<typeof loadCycleView>>["items"][number],
-  nextOrderDate: string,
-  laterOptions: { orderDate: string; label: string }[],
-): OutcomeRowData {
-  return {
-    id: item.id,
-    name: item.name,
-    quantity: item.quantity,
-    note: item.note,
-    category: item.category,
-    status: item.status,
-    addedByName: item.addedByUser?.name ?? null,
-    addedByRole: item.addedByUser?.role ?? null,
-    carryCount: item.carryCount,
-    resolutionNote: item.resolutionNote,
-    nextListLabel: formatDate(nextOrderDate),
-    laterOptions,
-  };
 }
 
 function OutcomeGroup({
@@ -300,7 +365,9 @@ function OutcomeGroup({
   return (
     <Card className={tone === "lock" ? "border-lock-line" : undefined}>
       <CardHeader
-        title={<span className={tone === "lock" ? "text-lock" : ""}>{title}</span>}
+        title={
+          <span className={tone === "lock" ? "text-lock" : ""}>{title}</span>
+        }
       />
       <ul>
         {rows.map((row) => (

@@ -7,6 +7,7 @@ import {
   saveWeek,
   type MenuFormState,
 } from "@/app/actions/meals";
+import { IngredientsButton } from "@/components/ingredients-button";
 import {
   Chip,
   IconPlus,
@@ -22,6 +23,8 @@ export type MenuEntry = {
   id: number | null;
   dish: string;
   recipeId: number | null;
+  /** True when this dish's ingredients are already on a grocery list. */
+  onShoppingList?: boolean;
   forWhom: string;
   notes: string;
   prepTiming: "same_day" | "day_before";
@@ -48,6 +51,7 @@ function blank(): MenuEntry {
     id: null,
     dish: "",
     recipeId: null,
+    onShoppingList: false,
     forWhom: "",
     notes: "",
     prepTiming: "same_day",
@@ -59,11 +63,13 @@ export function MenuEditor({
   previousMonday,
   monday,
   recipes,
+  groceryLists,
 }: {
   days: MenuDay[];
   previousMonday: string;
   monday: string;
   recipes: { id: number; title: string }[];
+  groceryLists: { id: number; name: string }[];
 }) {
   const router = useRouter();
   const [state, action, saving] = useActionState<MenuFormState, FormData>(
@@ -221,6 +227,7 @@ export function MenuEditor({
                       index={index}
                       showRemove={true}
                       recipes={recipes}
+                      groceryLists={groceryLists}
                       prepLabel={day.prepLabel}
                       prepRolledBack={day.prepRolledBack}
                       onChange={(patch) => update(day.date, slot, index, patch)}
@@ -244,6 +251,7 @@ function EntryFields({
   index,
   showRemove,
   recipes,
+  groceryLists,
   prepLabel,
   prepRolledBack,
   onChange,
@@ -255,6 +263,7 @@ function EntryFields({
   index: number;
   showRemove: boolean;
   recipes: { id: number; title: string }[];
+  groceryLists: { id: number; name: string }[];
   prepLabel: string;
   prepRolledBack: boolean;
   onChange: (patch: Partial<MenuEntry>) => void;
@@ -363,6 +372,16 @@ function EntryFields({
           </button>
         ))}
       </div>
+
+      {entry.id && entry.recipeId ? (
+        <IngredientsButton
+          mealId={entry.id}
+          dish={entry.dish}
+          alreadyAdded={Boolean(entry.onShoppingList)}
+          lists={groceryLists}
+          compact
+        />
+      ) : null}
 
       {entry.prepTiming === "day_before" ? (
         <span
