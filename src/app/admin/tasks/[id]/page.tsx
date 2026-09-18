@@ -29,6 +29,7 @@ export default async function EditTaskPage({
   const today = todayIn(viewer.household.timezone);
   const calendar = await loadWorkdayCalendar(
     viewer.household,
+    task.assignedTo,
     today,
     shiftDate(today, 120),
   );

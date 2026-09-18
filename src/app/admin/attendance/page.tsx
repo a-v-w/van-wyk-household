@@ -7,14 +7,17 @@ import {
 import { AttendanceRangeForm } from "@/components/attendance-range-form";
 import { AttendanceTally } from "@/components/attendance-tally";
 import {
+  Avatar,
   Card,
   CardHeader,
   Chip,
+  Empty,
   IconChevronLeft,
   IconChevronRight,
   buttonClass,
+  cn,
 } from "@/components/ui";
-import { firstName, householdEmployee, requireAdmin } from "@/lib/auth";
+import { householdMembers, requireAdmin } from "@/lib/auth";
 import {
   endOfMonth,
   formatDayDate,
@@ -22,6 +25,7 @@ import {
   formatMonth,
   isoWeekday,
   monthGrid,
+  monthValue,
   shiftMonthStart,
   startOfMonth,
   todayIn,
@@ -36,7 +40,7 @@ export const metadata: Metadata = { title: "Attendance" };
 export default async function AttendancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ month?: string; who?: string }>;
 }) {
   const viewer = await requireAdmin();
   const { household } = viewer;
@@ -50,16 +54,39 @@ export default async function AttendancePage({
   const monthStart: IsoDate = startOfMonth(requested);
   const monthEnd: IsoDate = endOfMonth(monthStart);
 
-  // The grid spills into the neighbouring months, so load those days too.
+  // Whose attendance we are looking at. Everyone can have their own.
+  const people = await householdMembers(household.id);
+  const requestedWho = params.who ? Number(params.who) : null;
+  const person =
+    people.find((p) => p.id === requestedWho) ??
+    people.find((p) => p.role === "employee") ??
+    people[0];
+
+  if (!person) {
+    return (
+      <div className="flex flex-col gap-4 px-5 py-6 lg:px-8 lg:py-8">
+        <h1 className="text-3xl leading-tight font-extrabold tracking-tight">
+          Attendance
+        </h1>
+        <Card>
+          <Empty
+            title="Nobody to track yet"
+            hint="Add the people who work here in Settings first."
+          />
+        </Card>
+      </div>
+    );
+  }
+
   const grid = monthGrid(monthStart);
   const { calendar, attendance } = await loadAttendance(
     household,
+    person.id,
     monthStart,
     monthEnd,
     today,
   );
 
-  const employee = await householdEmployee(household.id);
   const defaults = new Set(household.workingWeekdays);
 
   const weeks: CalendarDay[][] = grid.map((week) =>
@@ -68,6 +95,7 @@ export default async function AttendancePage({
       const status = calendar.statusFor(date);
       const usual = defaults.has(isoWeekday(date)) ? "working" : "off";
       return {
+        userId: person.id,
         date,
         dayNumber: formatDayNumber(date),
         longDate: formatDayDate(date),
@@ -89,8 +117,7 @@ export default async function AttendancePage({
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div className="flex flex-col gap-1">
           <p className="font-mono text-xs tracking-widest text-muted uppercase">
-            {employee ? firstName(employee) : "The household"} ·{" "}
-            {formatMonth(monthStart)}
+            {person.name} · {formatMonth(monthStart)}
           </p>
           <h1 className="text-3xl leading-tight font-extrabold tracking-tight">
             Attendance
@@ -99,7 +126,7 @@ export default async function AttendancePage({
 
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href={`/admin/attendance?month=${previous}`}
+            href={`/admin/attendance?who=${person.id}&month=${previous}`}
             className={buttonClass("secondary", "sm")}
           >
             <IconChevronLeft size={16} />
@@ -107,7 +134,7 @@ export default async function AttendancePage({
           </Link>
           {!isThisMonth ? (
             <Link
-              href="/admin/attendance"
+              href={`/admin/attendance?who=${person.id}`}
               title="Back to the month we are in"
               className={buttonClass("secondary", "sm")}
             >
@@ -115,7 +142,7 @@ export default async function AttendancePage({
             </Link>
           ) : null}
           <Link
-            href={`/admin/attendance?month=${next}`}
+            href={`/admin/attendance?who=${person.id}&month=${next}`}
             className={buttonClass("secondary", "sm")}
           >
             {formatMonth(shiftMonthStart(monthStart, 1)).split(" ")[0]}
@@ -123,6 +150,29 @@ export default async function AttendancePage({
           </Link>
         </div>
       </header>
+
+      {/* Whose attendance. Only shown once there is more than one person. */}
+      {people.length > 1 ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="label mr-1">Whose days</span>
+          {people.map((member) => (
+            <Link
+              key={member.id}
+              href={`/admin/attendance?who=${member.id}&month=${monthValue(monthStart)}`}
+              aria-current={member.id === person.id ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-bold transition-colors",
+                member.id === person.id
+                  ? "border-accent bg-accent-soft text-accent"
+                  : "border-line bg-surface text-ink-2 hover:bg-surface-2",
+              )}
+            >
+              <Avatar name={member.name} role={member.role} size="sm" />
+              {member.name}
+            </Link>
+          ))}
+        </div>
+      ) : null}
 
       <Card className="p-5">
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
@@ -162,6 +212,7 @@ export default async function AttendancePage({
               </p>
             </div>
             <AttendanceRangeForm
+              userId={person.id}
               defaultFrom={isThisMonth ? today : monthStart}
               defaultTo={isThisMonth ? today : monthStart}
             />

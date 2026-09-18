@@ -1,11 +1,16 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNull, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { households, users, type WorkdayStatus } from "@/db/schema";
-import { requireAdmin } from "@/lib/auth";
+import {
+  households,
+  users,
+  type UserRole,
+  type WorkdayStatus,
+} from "@/db/schema";
+import { householdMember, requireAdmin } from "@/lib/auth";
 import {
   clearWorkdayRange,
   setWorkday,
@@ -28,12 +33,14 @@ function refresh() {
  * anyway and there is nothing to note, so only real exceptions are stored.
  */
 export async function setDayStatus(
+  userId: number,
   date: string,
   status: WorkdayStatus,
   note?: string,
 ): Promise<void> {
   const viewer = await requireAdmin();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+  if (!(await householdMember(viewer.household.id, userId))) return;
 
   const defaults = new Set(viewer.household.workingWeekdays);
   const [y, m, d] = date.split("-").map(Number);
@@ -45,6 +52,7 @@ export async function setDayStatus(
 
   await setWorkday(
     viewer.household.id,
+    userId,
     date,
     status === usual && !trimmed ? null : status,
     trimmed,
@@ -54,10 +62,21 @@ export async function setDayStatus(
 }
 
 /** Puts a date back to whatever the usual weekday pattern says. */
-export async function clearDayStatus(date: string): Promise<void> {
+export async function clearDayStatus(
+  userId: number,
+  date: string,
+): Promise<void> {
   const viewer = await requireAdmin();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-  await setWorkday(viewer.household.id, date, null, null, viewer.user.id);
+  if (!(await householdMember(viewer.household.id, userId))) return;
+  await setWorkday(
+    viewer.household.id,
+    userId,
+    date,
+    null,
+    null,
+    viewer.user.id,
+  );
   refresh();
 }
 
@@ -72,6 +91,10 @@ export async function setDayRange(
   formData: FormData,
 ): Promise<RangeState> {
   const viewer = await requireAdmin();
+
+  const userId = Number(formData.get("userId") ?? 0);
+  const person = await householdMember(viewer.household.id, userId);
+  if (!person) return { error: "Choose whose days these are." };
 
   const from = String(formData.get("from") ?? "");
   const to = String(formData.get("to") ?? "") || from;
@@ -91,6 +114,7 @@ export async function setDayRange(
 
   const written = await setWorkdayRange(
     viewer.household.id,
+    userId,
     from,
     to,
     status,
@@ -119,13 +143,18 @@ export async function clearDayRange(
 ): Promise<RangeState> {
   const viewer = await requireAdmin();
 
+  const userId = Number(formData.get("userId") ?? 0);
+  if (!(await householdMember(viewer.household.id, userId))) {
+    return { error: "Choose whose days these are." };
+  }
+
   const from = String(formData.get("from") ?? "");
   const to = String(formData.get("to") ?? "") || from;
   const isDate = (value: string) => /^\d{4}-\d{2}-\d{2}$/.test(value);
   if (!isDate(from) || !isDate(to)) return { error: "Pick both dates." };
   if (to < from) return { error: "The last day is before the first day." };
 
-  await clearWorkdayRange(viewer.household.id, from, to);
+  await clearWorkdayRange(userId, from, to);
   refresh();
   return { ok: "Those days follow the usual pattern again." };
 }
@@ -177,16 +206,21 @@ export async function saveHouseholdSettings(
   return { ok: "Settings saved." };
 }
 
-/* ------------------------------------------------------------ the account -- */
+/* ---------------------------------------------------------------- people -- */
+
+export type PersonState =
+  | { error?: string; ok?: string; id?: number }
+  | undefined;
 
 /**
- * Creates or updates the employee's account. Their name is what the whole app
- * shows — no screen says "the nanny" once this is filled in.
+ * Adds or edits anyone in the household. The name typed here is the name every
+ * screen uses, theirs and yours, so nothing is ever called by a job title
+ * unless that is genuinely what you want to see.
  */
-export async function saveEmployee(
-  _state: SettingsState,
+export async function savePerson(
+  _state: PersonState,
   formData: FormData,
-): Promise<SettingsState> {
+): Promise<PersonState> {
   const viewer = await requireAdmin();
 
   const id = Number(formData.get("id") ?? 0);
@@ -194,10 +228,15 @@ export async function saveEmployee(
   const email = String(formData.get("email") ?? "")
     .trim()
     .toLowerCase();
+  const jobTitle = String(formData.get("jobTitle") ?? "").trim() || null;
   const password = String(formData.get("password") ?? "");
+  const role: UserRole =
+    String(formData.get("role") ?? "employee") === "admin"
+      ? "admin"
+      : "employee";
 
   if (!name) return { error: "Enter their name." };
-  if (!email || !email.includes("@")) return { error: "Enter a valid email address." };
+  if (!email.includes("@")) return { error: "Enter a valid email address." };
   if (!id && password.length < 8) {
     return { error: "Set a password of at least 8 characters." };
   }
@@ -213,34 +252,92 @@ export async function saveEmployee(
   if (clash) return { error: "Another account already uses that email address." };
 
   if (id) {
-    const existing = await db.query.users.findFirst({
-      where: and(eq(users.id, id), eq(users.householdId, viewer.household.id)),
-    });
+    const existing = await householdMember(viewer.household.id, id);
     if (!existing) return { error: "That account is not in this household." };
+
+    // Never let the last admin demote themselves out of the household.
+    if (existing.role === "admin" && role !== "admin") {
+      const admins = await db.query.users.findMany({
+        where: and(
+          eq(users.householdId, viewer.household.id),
+          eq(users.role, "admin"),
+          isNull(users.archivedAt),
+        ),
+      });
+      if (admins.length <= 1) {
+        return {
+          error: "Someone has to stay an admin. Make another person an admin first.",
+        };
+      }
+    }
 
     await db
       .update(users)
       .set({
         name,
         email,
+        jobTitle,
+        role,
         ...(password ? { passwordHash: await bcrypt.hash(password, 10) } : {}),
       })
       .where(eq(users.id, id));
 
     refresh();
-    return { ok: password ? "Saved, with a new password." : "Saved." };
+    return {
+      ok: password ? "Saved, with a new password." : "Saved.",
+      id,
+    };
   }
 
-  await db.insert(users).values({
-    householdId: viewer.household.id,
-    name,
-    email,
-    role: "employee",
-    passwordHash: await bcrypt.hash(password, 10),
-  });
+  const [created] = await db
+    .insert(users)
+    .values({
+      householdId: viewer.household.id,
+      name,
+      email,
+      jobTitle,
+      role,
+      passwordHash: await bcrypt.hash(password, 10),
+    })
+    .returning({ id: users.id });
 
   refresh();
-  return { ok: `${name.split(/\s+/)[0]} can sign in now.` };
+  return { ok: `${name.split(/\s+/)[0]} can sign in now.`, id: created?.id };
+}
+
+/** Marks someone as having left. Their history stays; they cannot sign in. */
+export async function archivePerson(userId: number): Promise<void> {
+  const viewer = await requireAdmin();
+  if (userId === viewer.user.id) return; // never lock yourself out
+
+  const person = await householdMember(viewer.household.id, userId);
+  if (!person) return;
+
+  if (person.role === "admin") {
+    const admins = await db.query.users.findMany({
+      where: and(
+        eq(users.householdId, viewer.household.id),
+        eq(users.role, "admin"),
+        isNull(users.archivedAt),
+      ),
+    });
+    if (admins.length <= 1) return;
+  }
+
+  await db
+    .update(users)
+    .set({ archivedAt: new Date() })
+    .where(eq(users.id, userId));
+  refresh();
+}
+
+export async function restorePerson(userId: number): Promise<void> {
+  const viewer = await requireAdmin();
+  const person = await householdMember(viewer.household.id, userId);
+  if (!person) return;
+
+  await db.update(users).set({ archivedAt: null }).where(eq(users.id, userId));
+  refresh();
 }
 
 /** Updates the admin's own name, email and password. */

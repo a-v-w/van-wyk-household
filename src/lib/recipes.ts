@@ -9,9 +9,18 @@ export type RecipeWithUse = Recipe & {
   timesPlanned: number;
 };
 
+/**
+ * Browsers submit textarea content with CRLF line endings, so everything that
+ * reads stored prose normalises first. Without this a typed recipe's steps all
+ * ran together as one long paragraph under a single number.
+ */
+export function normaliseLines(value: string | null): string {
+  return (value ?? "").replace(/\r\n?/g, "\n");
+}
+
 /** One line per ingredient, blanks dropped. */
 export function ingredientLines(recipe: Pick<Recipe, "ingredients">): string[] {
-  return (recipe.ingredients ?? "")
+  return normaliseLines(recipe.ingredients)
     .split("\n")
     .map((line) => line.trim())
     .filter(Boolean);
@@ -19,7 +28,7 @@ export function ingredientLines(recipe: Pick<Recipe, "ingredients">): string[] {
 
 /** The method split into steps, so it can be numbered. */
 export function methodSteps(recipe: Pick<Recipe, "method">): string[] {
-  return (recipe.method ?? "")
+  return normaliseLines(recipe.method)
     .split(/\n{2,}|\n(?=\d+[.)]\s)/)
     .map((step) => step.replace(/^\s*\d+[.)]\s*/, "").trim())
     .filter(Boolean);

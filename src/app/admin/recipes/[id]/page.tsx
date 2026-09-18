@@ -44,6 +44,7 @@ export default async function EditRecipePage({
       <div className="grid gap-5 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] lg:items-start">
         <Card className="p-5 lg:p-6">
           <RecipeEditor
+            returnTo="/admin/recipes"
             values={{
               id: recipe.id,
               title: recipe.title,

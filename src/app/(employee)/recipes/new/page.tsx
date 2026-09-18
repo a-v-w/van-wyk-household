@@ -2,32 +2,36 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RecipeEditor } from "@/components/recipe-editor";
 import { Card, IconChevronLeft } from "@/components/ui";
-import { requireAdmin } from "@/lib/auth";
+import { requireViewer } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "New recipe" };
 
 export default async function NewRecipePage() {
-  await requireAdmin();
+  await requireViewer();
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-5 py-6 lg:px-8 lg:py-8">
+    <div className="flex flex-col gap-4 px-4 pt-2 pb-8">
       <Link
-        href="/admin/recipes"
-        className="flex items-center gap-1 text-sm font-bold text-accent"
+        href="/recipes"
+        className="flex items-center gap-1 px-1 text-sm font-bold text-accent"
       >
         <IconChevronLeft size={16} />
         All recipes
       </Link>
 
-      <h1 className="text-3xl leading-tight font-extrabold tracking-tight">
+      <h1 className="px-1 text-[28px] leading-tight font-extrabold tracking-tight">
         New recipe
       </h1>
+      <p className="px-1 text-sm text-ink-2">
+        Anything you write here goes into the household cookbook, and can be
+        put on the menu.
+      </p>
 
-      <Card className="p-5 lg:p-6">
+      <Card className="p-5">
         <RecipeEditor
-          returnTo="/admin/recipes"
+          returnTo="/recipes"
           values={{
             id: null,
             title: "",

@@ -1,6 +1,6 @@
 import "server-only";
 
-import { and, eq, gte, lte } from "drizzle-orm";
+import { and, eq, gte, inArray, lte } from "drizzle-orm";
 import { db } from "@/db";
 import {
   workdayOverrides,
@@ -9,17 +9,24 @@ import {
 } from "@/db/schema";
 import { datesBetween, isoWeekday, shiftDate, type IsoDate } from "@/lib/dates";
 
+export {
+  STATUS_ACTION,
+  STATUS_CHOICES,
+  STATUS_LABEL,
+} from "@/lib/workday-constants";
+
 export type DayRecord = {
   status: WorkdayStatus;
   note: string | null;
 };
 
 /**
- * Which days the employee works, and why a day was different. The household has
- * a default weekday set; individual dates can be marked worked, sick, on leave
- * or simply off, and only "working" counts as a working day.
+ * One person's working days. The household has a default weekday set; any
+ * single date can be recorded as worked, off, sick or on leave, and only
+ * "working" counts as a working day.
  */
 export type WorkdayCalendar = {
+  userId: number | null;
   isWorking: (date: IsoDate) => boolean;
   /** The recorded exception for a date, or null when it follows the pattern. */
   recordFor: (date: IsoDate) => DayRecord | null;
@@ -30,37 +37,19 @@ export type WorkdayCalendar = {
   records: Map<IsoDate, DayRecord>;
 };
 
-export {
-  STATUS_ACTION,
-  STATUS_CHOICES,
-  STATUS_LABEL,
-} from "@/lib/workday-constants";
+/** Everyone's calendars at once, keyed by user id. */
+export type CalendarSet = {
+  for: (userId: number | null | undefined) => WorkdayCalendar;
+  /** True when at least one of the people works that day. */
+  anyoneWorking: (date: IsoDate) => boolean;
+  /** The last day anybody worked, for kitchen prep that belongs to no one. */
+  previousWorkingDay: (date: IsoDate) => IsoDate;
+  all: WorkdayCalendar[];
+};
 
-/**
- * Builds a calendar for a date range. The range is padded on each side so
- * `previousWorkingDay` can look backwards across it.
- */
-export async function loadWorkdayCalendar(
+function buildCalendar(
   household: Household,
-  from: IsoDate,
-  to: IsoDate,
-): Promise<WorkdayCalendar> {
-  const rows = await db.query.workdayOverrides.findMany({
-    where: and(
-      eq(workdayOverrides.householdId, household.id),
-      gte(workdayOverrides.date, shiftDate(from, -21)),
-      lte(workdayOverrides.date, shiftDate(to, 21)),
-    ),
-  });
-
-  return buildCalendar(
-    household,
-    new Map(rows.map((row) => [row.date, { status: row.status, note: row.note }])),
-  );
-}
-
-export function buildCalendar(
-  household: Household,
+  userId: number | null,
   records: Map<IsoDate, DayRecord>,
 ): WorkdayCalendar {
   const defaults = new Set(household.workingWeekdays);
@@ -89,15 +78,110 @@ export function buildCalendar(
     return shiftDate(date, -1);
   }
 
-  return { isWorking, recordFor, statusFor, previousWorkingDay, records };
+  return { userId, isWorking, recordFor, statusFor, previousWorkingDay, records };
+}
+
+/** A calendar for someone with nothing recorded: the plain weekday pattern. */
+export function patternCalendar(
+  household: Household,
+  userId: number | null = null,
+): WorkdayCalendar {
+  return buildCalendar(household, userId, new Map());
 }
 
 /**
- * Records what happened on one date. Passing null clears the record, so the
- * date goes back to following the household's usual pattern.
+ * Loads one person's calendar for a date range, padded on each side so
+ * `previousWorkingDay` can look backwards across it.
+ */
+export async function loadWorkdayCalendar(
+  household: Household,
+  userId: number,
+  from: IsoDate,
+  to: IsoDate,
+): Promise<WorkdayCalendar> {
+  const rows = await db.query.workdayOverrides.findMany({
+    where: and(
+      eq(workdayOverrides.userId, userId),
+      gte(workdayOverrides.date, shiftDate(from, -21)),
+      lte(workdayOverrides.date, shiftDate(to, 21)),
+    ),
+  });
+
+  return buildCalendar(
+    household,
+    userId,
+    new Map(rows.map((row) => [row.date, { status: row.status, note: row.note }])),
+  );
+}
+
+/**
+ * Loads calendars for several people in one query. Anything that spans the
+ * household — a task list covering everyone, the kitchen — uses this so each
+ * person is judged against their own days.
+ */
+export async function loadCalendars(
+  household: Household,
+  userIds: number[],
+  from: IsoDate,
+  to: IsoDate,
+): Promise<CalendarSet> {
+  const rows =
+    userIds.length === 0
+      ? []
+      : await db.query.workdayOverrides.findMany({
+          where: and(
+            inArray(workdayOverrides.userId, userIds),
+            gte(workdayOverrides.date, shiftDate(from, -21)),
+            lte(workdayOverrides.date, shiftDate(to, 21)),
+          ),
+        });
+
+  const byUser = new Map<number, Map<IsoDate, DayRecord>>();
+  for (const id of userIds) byUser.set(id, new Map());
+  for (const row of rows) {
+    byUser
+      .get(row.userId)
+      ?.set(row.date, { status: row.status, note: row.note });
+  }
+
+  const calendars = new Map<number, WorkdayCalendar>();
+  for (const id of userIds) {
+    calendars.set(id, buildCalendar(household, id, byUser.get(id) ?? new Map()));
+  }
+
+  // Someone with no account of their own still gets the household pattern.
+  const fallback = patternCalendar(household);
+  const all = [...calendars.values()];
+
+  function anyoneWorking(date: IsoDate): boolean {
+    if (all.length === 0) return fallback.isWorking(date);
+    return all.some((calendar) => calendar.isWorking(date));
+  }
+
+  function previousWorkingDay(date: IsoDate): IsoDate {
+    for (let i = 1; i <= 14; i++) {
+      const candidate = shiftDate(date, -i);
+      if (anyoneWorking(candidate)) return candidate;
+    }
+    return shiftDate(date, -1);
+  }
+
+  return {
+    for: (userId) =>
+      (userId != null ? calendars.get(userId) : undefined) ?? fallback,
+    anyoneWorking,
+    previousWorkingDay,
+    all,
+  };
+}
+
+/**
+ * Records what happened on one date for one person. Passing null clears the
+ * record, so the date goes back to the usual pattern.
  */
 export async function setWorkday(
   householdId: number,
+  userId: number,
   date: IsoDate,
   status: WorkdayStatus | null,
   note: string | null,
@@ -108,7 +192,7 @@ export async function setWorkday(
       .delete(workdayOverrides)
       .where(
         and(
-          eq(workdayOverrides.householdId, householdId),
+          eq(workdayOverrides.userId, userId),
           eq(workdayOverrides.date, date),
         ),
       );
@@ -117,9 +201,9 @@ export async function setWorkday(
 
   await db
     .insert(workdayOverrides)
-    .values({ householdId, date, status, note, recordedBy })
+    .values({ householdId, userId, date, status, note, recordedBy })
     .onConflictDoUpdate({
-      target: [workdayOverrides.householdId, workdayOverrides.date],
+      target: [workdayOverrides.userId, workdayOverrides.date],
       set: { status, note, recordedBy },
     });
 }
@@ -146,8 +230,8 @@ export type Attendance = {
 };
 
 /**
- * Counts up a stretch of the calendar. Only dates up to `upTo` are counted as
- * worked, so a part-finished month does not look like a full one.
+ * Counts up a stretch of one person's calendar. Only dates up to `upTo` are
+ * counted as worked, so a part-finished month does not look like a full one.
  */
 export function summariseAttendance(
   household: Household,
@@ -199,11 +283,12 @@ export function summariseAttendance(
 }
 
 /**
- * Records the same status across a stretch of dates, which is how a block of
- * leave gets logged months ahead of time.
+ * Records the same status across a stretch of dates for one person, which is
+ * how a block of leave gets logged months ahead of time.
  */
 export async function setWorkdayRange(
   householdId: number,
+  userId: number,
   from: IsoDate,
   to: IsoDate,
   status: WorkdayStatus,
@@ -218,16 +303,16 @@ export async function setWorkdayRange(
 
   for (const date of datesBetween(from, to)) {
     if (onlyUsualWorkdays && !defaults.has(isoWeekday(date))) continue;
-    await setWorkday(householdId, date, status, note, recordedBy);
+    await setWorkday(householdId, userId, date, status, note, recordedBy);
     written += 1;
   }
 
   return written;
 }
 
-/** Removes every record in a range, so those dates follow the pattern again. */
+/** Removes one person's records in a range, back to the usual pattern. */
 export async function clearWorkdayRange(
-  householdId: number,
+  userId: number,
   from: IsoDate,
   to: IsoDate,
 ): Promise<void> {
@@ -235,21 +320,22 @@ export async function clearWorkdayRange(
     .delete(workdayOverrides)
     .where(
       and(
-        eq(workdayOverrides.householdId, householdId),
+        eq(workdayOverrides.userId, userId),
         gte(workdayOverrides.date, from),
         lte(workdayOverrides.date, to),
       ),
     );
 }
 
-/** Loads a calendar for a range and summarises it in one go. */
+/** Loads one person's calendar for a range and summarises it in one go. */
 export async function loadAttendance(
   household: Household,
+  userId: number,
   from: IsoDate,
   to: IsoDate,
   upTo: IsoDate,
 ): Promise<{ calendar: WorkdayCalendar; attendance: Attendance }> {
-  const calendar = await loadWorkdayCalendar(household, from, to);
+  const calendar = await loadWorkdayCalendar(household, userId, from, to);
   return {
     calendar,
     attendance: summariseAttendance(household, calendar, from, to, upTo),

@@ -14,12 +14,7 @@ import {
 } from "@/components/ui";
 import { AttendanceTally } from "@/components/attendance-tally";
 import { WorkdayStrip, type WorkdayCell } from "@/components/workday-strip";
-import {
-  firstName,
-  householdEmployee,
-  householdMembers,
-  requireAdmin,
-} from "@/lib/auth";
+import { firstName, householdMembers, requireAdmin } from "@/lib/auth";
 import {
   endOfMonth,
   formatDate,
@@ -43,7 +38,11 @@ import {
 } from "@/lib/groceries";
 import { loadDayKitchen, SLOT_LABEL } from "@/lib/meals";
 import { loadOccurrences } from "@/lib/tasks";
-import { loadAttendance, STATUS_LABEL } from "@/lib/workdays";
+import {
+  loadCalendars,
+  summariseAttendance,
+  STATUS_LABEL,
+} from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
 
@@ -60,16 +59,30 @@ export default async function AdminDashboard() {
   // reuse the calendar for the week strip.
   const monthStart = `${today.slice(0, 7)}-01`;
   const monthEnd = endOfMonth(today);
-  const { calendar, attendance } = await loadAttendance(
+  const monthLabel = formatMonth(today);
+  const members = await householdMembers(household.id);
+  const staff = members.filter((m) => m.role === "employee");
+
+  // Everyone's days at once: tasks are judged against their own assignee's
+  // calendar, and the kitchen against whoever is in that day.
+  const calendars = await loadCalendars(
     household,
+    members.map((m) => m.id),
     monthStart,
     monthEnd,
-    today,
   );
-  const monthLabel = formatMonth(today);
 
-  const members = await householdMembers(household.id);
-  const employee = await householdEmployee(household.id);
+  // The attendance card follows the people who work here.
+  const attendanceFor = staff.map((person) => ({
+    person,
+    attendance: summariseAttendance(
+      household,
+      calendars.for(person.id),
+      monthStart,
+      monthEnd,
+      today,
+    ),
+  }));
 
   const [weekOccurrences, todayOccurrences, kitchen, cycle, awaiting] =
     await Promise.all([
@@ -77,7 +90,7 @@ export default async function AdminDashboard() {
         householdId: household.id,
         from: monday,
         to: week[6],
-        calendar,
+        calendars,
       }),
       // Everyone's, not just mine, and dragging in anything once-off that is
       // past its date and still not ticked.
@@ -85,10 +98,10 @@ export default async function AdminDashboard() {
         householdId: household.id,
         from: today,
         to: today,
-        calendar,
+        calendars,
         includeOverdue: true,
       }),
-      loadDayKitchen(household.id, today, calendar),
+      loadDayKitchen(household.id, today, calendars),
       currentCycle(household),
       cyclesAwaitingOrder(household),
     ]);
@@ -136,21 +149,28 @@ export default async function AdminDashboard() {
   const percent = (done: number, total: number) =>
     total === 0 ? 0 : Math.round((done / total) * 100);
 
+  // One strip per person who works here, so a second helper's week is visible
+  // without leaving the dashboard.
   const defaults = new Set(household.workingWeekdays);
-  const days: WorkdayCell[] = week.map((date) => {
-    const record = calendar.recordFor(date);
-    const status = calendar.statusFor(date);
-    const usual = defaults.has(isoWeekday(date)) ? "working" : "off";
-    return {
-      date,
-      weekday: weekdayShort(date),
-      dayNumber: formatDayNumber(date),
-      longDate: formatDayDate(date),
-      status,
-      note: record?.note ?? null,
-      isToday: date === today,
-      exception: status !== usual,
-    };
+  const weekStrips = staff.map((person) => {
+    const calendar = calendars.for(person.id);
+    const days: WorkdayCell[] = week.map((date) => {
+      const record = calendar.recordFor(date);
+      const status = calendar.statusFor(date);
+      const usual = defaults.has(isoWeekday(date)) ? "working" : "off";
+      return {
+        userId: person.id,
+        date,
+        weekday: weekdayShort(date),
+        dayNumber: formatDayNumber(date),
+        longDate: formatDayDate(date),
+        status,
+        note: record?.note ?? null,
+        isToday: date === today,
+        exception: status !== usual,
+      };
+    });
+    return { person, days };
   });
 
 
@@ -175,80 +195,100 @@ export default async function AdminDashboard() {
         </div>
       </header>
 
-      <Card className="p-5">
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <span className="label">
-            {employee ? `${firstName(employee)}'s week` : "Working days"} ·{" "}
-            {formatDate(monday)} to {formatDate(week[6])}
-          </span>
-          <span className="text-[13px] text-muted">
-            Click a day to record whether it was worked, off, sick or leave.
-          </span>
-        </div>
-        <WorkdayStrip days={days} />
-      </Card>
-
-      <Card className="flex flex-col p-5">
-        <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-          <span className="label">
-            Attendance · {monthLabel}
-            {employee ? ` · ${firstName(employee)}` : ""}
-          </span>
-          <Link
-            href="/admin/attendance"
-            className="text-[13px] font-bold text-accent"
-          >
-            Open attendance
-          </Link>
-        </div>
-
-        <AttendanceTally attendance={attendance} />
-
-        {attendance.exceptions.length > 0 ? (
-          <div className="mt-4 flex flex-col gap-2 border-t border-line pt-3">
-            <span className="label">Days that were different</span>
-            <ul className="flex flex-col gap-1.5">
-              {attendance.exceptions.slice(0, 6).map((entry) => (
-                <li
-                  key={entry.date}
-                  className="flex flex-wrap items-center gap-2 text-sm"
-                >
-                  <span className="font-mono text-xs text-muted tabular">
-                    {formatDayDate(entry.date)}
-                  </span>
-                  <Chip
-                    tone={
-                      entry.status === "sick"
-                        ? "danger"
-                        : entry.status === "leave"
-                          ? "lock"
-                          : entry.status === "working"
-                            ? "accent"
-                            : "neutral"
-                    }
-                  >
-                    {STATUS_LABEL[entry.status]}
-                  </Chip>
-                  {entry.date > today ? (
-                    <span className="text-xs text-muted">
-                      still to come, so not counted yet
-                    </span>
-                  ) : null}
-                  {entry.note ? (
-                    <span className="min-w-0 flex-1 truncate text-ink-2">
-                      {entry.note}
-                    </span>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+      {weekStrips.length === 0 ? (
+        <Card>
+          <Empty
+            title="Nobody works here yet"
+            hint="Add the people who do in Settings, and their weeks appear here."
+          />
+        </Card>
+      ) : (
+        <Card className="flex flex-col gap-5 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="label">
+              The week · {formatDate(monday)} to {formatDate(week[6])}
+            </span>
+            <span className="text-[13px] text-muted">
+              Click a day to record whether it was worked, off, sick or leave.
+            </span>
           </div>
-        ) : (
-          <p className="mt-4 border-t border-line pt-3 text-sm text-muted">
-            Nothing out of the ordinary this month.
-          </p>
-        )}
-      </Card>
+          {weekStrips.map(({ person, days }) => (
+            <div key={person.id} className="flex flex-col gap-2">
+              {weekStrips.length > 1 ? (
+                <div className="flex items-center gap-2">
+                  <Avatar name={person.name} role={person.role} size="sm" />
+                  <span className="text-sm font-bold">{person.name}</span>
+                  {person.jobTitle ? <Chip>{person.jobTitle}</Chip> : null}
+                </div>
+              ) : null}
+              <WorkdayStrip days={days} />
+            </div>
+          ))}
+        </Card>
+      )}
+
+      {attendanceFor.map(({ person, attendance }) => (
+        <Card key={person.id} className="flex flex-col p-5">
+          <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+            <span className="label">
+              Attendance · {monthLabel} · {person.name}
+            </span>
+            <Link
+              href={`/admin/attendance?who=${person.id}`}
+              className="text-[13px] font-bold text-accent"
+            >
+              Open attendance
+            </Link>
+          </div>
+
+          <AttendanceTally attendance={attendance} />
+
+          {attendance.exceptions.length > 0 ? (
+            <div className="mt-4 flex flex-col gap-2 border-t border-line pt-3">
+              <span className="label">Days that were different</span>
+              <ul className="flex flex-col gap-1.5">
+                {attendance.exceptions.slice(0, 6).map((entry) => (
+                  <li
+                    key={entry.date}
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                  >
+                    <span className="font-mono text-xs text-muted tabular">
+                      {formatDayDate(entry.date)}
+                    </span>
+                    <Chip
+                      tone={
+                        entry.status === "sick"
+                          ? "danger"
+                          : entry.status === "leave"
+                            ? "lock"
+                            : entry.status === "working"
+                              ? "accent"
+                              : "neutral"
+                      }
+                    >
+                      {STATUS_LABEL[entry.status]}
+                    </Chip>
+                    {entry.date > today ? (
+                      <span className="text-xs text-muted">
+                        still to come, so not counted yet
+                      </span>
+                    ) : null}
+                    {entry.note ? (
+                      <span className="min-w-0 flex-1 truncate text-ink-2">
+                        {entry.note}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="mt-4 border-t border-line pt-3 text-sm text-muted">
+              Nothing out of the ordinary this month.
+            </p>
+          )}
+        </Card>
+      ))}
 
       {/* Tasks: what is done, what is not, today and across the week. */}
       <Card className="flex flex-col p-5">
@@ -482,16 +522,20 @@ export default async function AdminDashboard() {
             </div>
 
             <div className="flex flex-col gap-1 text-sm">
-              {members.map((person) => (
-                <div key={person.id} className="flex justify-between">
-                  <span>
-                    Added by {person.id === user.id ? "you" : person.name}
-                  </span>
-                  <span className="font-mono text-ink-2 tabular">
-                    {pending.filter((i) => i.addedBy === person.id).length}
-                  </span>
-                </div>
-              ))}
+              {members
+                .map((person) => ({
+                  person,
+                  count: pending.filter((i) => i.addedBy === person.id).length,
+                }))
+                .filter(({ person, count }) => count > 0 || person.id === user.id)
+                .map(({ person, count }) => (
+                  <div key={person.id} className="flex justify-between">
+                    <span>
+                      Added by {person.id === user.id ? "you" : person.name}
+                    </span>
+                    <span className="font-mono text-ink-2 tabular">{count}</span>
+                  </div>
+                ))}
               {carried.length > 0 ? (
                 <div className="flex justify-between text-lock">
                   <span>Of those, carried over</span>

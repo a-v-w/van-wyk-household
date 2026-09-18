@@ -17,9 +17,11 @@ import {
  * leave in December": pick the first and last day, choose Leave, save.
  */
 export function AttendanceRangeForm({
+  userId,
   defaultFrom,
   defaultTo,
 }: {
+  userId: number;
   defaultFrom: string;
   defaultTo: string;
 }) {
@@ -37,6 +39,7 @@ export function AttendanceRangeForm({
   return (
     <div className="flex flex-col gap-4">
       <form action={action} className="flex flex-col gap-4">
+        <input type="hidden" name="userId" value={userId} />
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="First day">
             <input

@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Card, Chip, Empty, IconClock } from "@/components/ui";
+import {
+  Card,
+  Chip,
+  Empty,
+  IconClock,
+  IconPlus,
+  buttonClass,
+} from "@/components/ui";
 import { requireViewer } from "@/lib/auth";
 import { loadRecipes } from "@/lib/recipes";
 
@@ -14,20 +21,28 @@ export default async function RecipesPage() {
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-2 pb-8">
-      <header className="flex flex-col gap-1 px-1">
-        <p className="font-mono text-xs tracking-widest text-muted uppercase">
-          The household&apos;s cookbook
-        </p>
-        <h1 className="text-[28px] leading-tight font-extrabold tracking-tight">
-          Recipes
-        </h1>
+      <header className="flex flex-col gap-3 px-1">
+        <div className="flex flex-col gap-1">
+          <p className="font-mono text-xs tracking-widest text-muted uppercase">
+            The household&apos;s cookbook
+          </p>
+          <h1 className="text-[28px] leading-tight font-extrabold tracking-tight">
+            Recipes
+          </h1>
+        </div>
+        <div>
+          <Link href="/recipes/new" className={buttonClass("primary")}>
+            <IconPlus size={16} />
+            Add a recipe
+          </Link>
+        </div>
       </header>
 
       {recipes.length === 0 ? (
         <Card>
           <Empty
             title="No recipes yet"
-            hint="Anything written down for a meal will show up here."
+            hint="Write one down and it goes into the household cookbook."
           />
         </Card>
       ) : (
@@ -49,6 +64,9 @@ export default async function RecipesPage() {
                       </span>
                     ) : null}
                   </div>
+                  {recipe.createdBy === viewer.user.id ? (
+                    <Chip tone="accent">Yours</Chip>
+                  ) : null}
                   {recipe.prepMinutes ? (
                     <Chip>
                       <IconClock size={13} />

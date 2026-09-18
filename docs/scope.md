@@ -1,8 +1,8 @@
 # Household app — scope (v1)
 
-One household, two users. The **admin** (you) plans the week; the **employee** works from a phone and ticks things off. Five areas: tasks, menus, recipes, the grocery list, and reminders.
+One household, as many people as it needs. **Admins** plan the week; **everyone else** works from a phone and ticks things off. Five areas: tasks, menus, recipes, the grocery list, and reminders.
 
-The employee is always referred to by their own name in the app itself. This document says "the employee" only because it is written before that name exists.
+Everyone is always referred to by their own name in the app itself. This document says "the employee" only because it is written before those names exist.
 
 This is a **web app**: it runs in the browser at one URL, on the phone and on the desktop, with no native app and no app store. Built on the existing Next.js 16 + Drizzle + Postgres scaffold, deployed manually to Vercel as already set up.
 
@@ -14,7 +14,7 @@ Assumptions are listed at the end. The two that matter most: the household timez
 
 ## 1. Users and roles
 
-Two fixed roles. No self-signup: the admin is seeded by a script, and the admin creates the employee's account from Settings.
+Two roles, with as many people in each as the household needs. No self-signup: the first admin is seeded by a script, and admins add everyone else from Settings. Someone who leaves is archived, which keeps their history and stops them signing in.
 
 | Capability | Admin | Employee |
 | --- | --- | --- |
@@ -23,12 +23,14 @@ Two fixed roles. No self-signup: the admin is seeded by a script, and the admin 
 | Tick off own assigned tasks and prep items | ✓ | ✓ |
 | Tick off anyone's tasks | ✓ | – |
 | Record a day as worked, off, sick or on leave | ✓ | – |
-| Create / edit weekly menus and recipes | ✓ | – |
+| Create / edit weekly menus | ✓ | – |
+| Write recipes, and edit their own | ✓ | ✓ |
+| Edit anyone's recipe | ✓ | – |
+| Add, edit and archive people | ✓ | – |
 | View menus, recipes and prep instructions | ✓ | ✓ |
 | Add grocery items while the list is open | ✓ | ✓ |
 | Edit / remove grocery items | any item | own items only |
 | Edit any grocery list at any time, unlock, mark ordered | ✓ | – |
-| Manage the employee's account, reset password | ✓ | – |
 | Household settings (timezone, reminder time) | ✓ | – |
 
 **Auth recommendation:** Auth.js v5 with the Credentials provider and a JWT session cookie, passwords hashed with bcrypt. Two users do not justify a database session table. Every server action re-checks the role; the UI hiding a button is never the only guard.
@@ -74,7 +76,7 @@ Counts stop at today, so a part-finished month does not read as a full one, and 
 ## 3. Tasks
 
 ### Assignees
-Every task has an **assignee**: the employee or you. New tasks default to the employee. Each person's Today view shows only their own tasks; the admin's dashboard shows both. The admin can tick anyone's task; everyone else only their own.
+Every task has an **assignee**: anyone in the household. New tasks default to the first person who works here. Each person's Today view shows only their own tasks; the admin's dashboard shows both. The admin can tick anyone's task; everyone else only their own.
 
 ### Once-off tasks
 Title, optional notes, due date, optional time, assignee.
@@ -125,7 +127,7 @@ Each dish has:
 - **prep timing**: `on the day` or `day before`
 
 ### Recipes
-The household keeps its own cookbook, written by the admin: name, one-line summary, servings, time, ingredients (one per line) and a method. An outside link can stand in when the recipe lives on a website.
+The household keeps its own cookbook, written by anyone who works here: name, one-line summary, servings, time, ingredients (one per line) and a method. You can edit what you wrote; an admin can edit anything. An outside link can stand in when the recipe lives on a website.
 
 - Attaching a recipe to a dish puts a **Recipe** link on that meal wherever it appears.
 - The employee also gets a **Recipes** tab: the whole cookbook, browsable on its own.
@@ -267,7 +269,7 @@ Each table lands as a committed migration per the repo convention.
 
 ## 10. Out of scope for v1
 
-- More than one employee or more than one household in the UI (the schema allows it; the screens do not).
+- More than one household in the UI (the schema allows it; the screens do not).
 - Hours, leave, payroll.
 - Turning a recipe's ingredients into grocery items automatically.
 - Staple items that auto-add every week (small, good candidate for v1.1).

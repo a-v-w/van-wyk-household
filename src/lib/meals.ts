@@ -10,7 +10,7 @@ import {
   type PrepTiming,
 } from "@/db/schema";
 import { shiftDate, type IsoDate } from "@/lib/dates";
-import type { WorkdayCalendar } from "@/lib/workdays";
+import type { CalendarSet } from "@/lib/workdays";
 
 export type MealWithPrep = Meal & {
   /** The day the cooking or prep work actually lands on. */
@@ -51,17 +51,17 @@ export function mealLabel(meal: Pick<Meal, "slot" | "forWhom">): string {
  * is the previous *working* day, so a Monday dinner prepped in advance shows up
  * on Friday when nobody works the weekend — and on Saturday when they do.
  */
-export function prepDateFor(meal: Meal, calendar: WorkdayCalendar): IsoDate {
+export function prepDateFor(meal: Meal, calendars: CalendarSet): IsoDate {
   if (meal.prepTiming === "same_day") return meal.date;
-  return calendar.previousWorkingDay(meal.date);
+  return calendars.previousWorkingDay(meal.date);
 }
 
 function decorate(
   meal: Meal,
-  calendar: WorkdayCalendar,
+  calendars: CalendarSet,
   done: Map<number, Date>,
 ): MealWithPrep {
-  const prepDate = prepDateFor(meal, calendar);
+  const prepDate = prepDateFor(meal, calendars);
   const completedAt = done.get(meal.id) ?? null;
   return {
     ...meal,
@@ -86,7 +86,7 @@ export async function loadMeals(
   householdId: number,
   from: IsoDate,
   to: IsoDate,
-  calendar: WorkdayCalendar,
+  calendars: CalendarSet,
 ): Promise<MealWithPrep[]> {
   const rows = await db.query.meals.findMany({
     where: and(
@@ -97,7 +97,7 @@ export async function loadMeals(
     orderBy: [asc(meals.date), asc(meals.sortOrder), asc(meals.id)],
   });
   const done = await completionsFor(rows.map((r) => r.id));
-  return rows.map((meal) => decorate(meal, calendar, done));
+  return rows.map((meal) => decorate(meal, calendars, done));
 }
 
 /**
@@ -122,7 +122,7 @@ export function groupBySlot(
 export async function loadDayKitchen(
   householdId: number,
   date: IsoDate,
-  calendar: WorkdayCalendar,
+  calendars: CalendarSet,
 ): Promise<{
   today: MealWithPrep[];
   todayBySlot: SlotEntries[];
@@ -133,7 +133,7 @@ export async function loadDayKitchen(
     householdId,
     date,
     shiftDate(date, 14),
-    calendar,
+    calendars,
   );
   const today = window.filter((m) => m.date === date);
 

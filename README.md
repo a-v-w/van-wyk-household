@@ -1,12 +1,12 @@
 # van-wyk-household
 
-A household web app for two people: an **admin** who plans the week and an **employee** who works from their phone and ticks things off. It runs in the browser at one URL, on a phone and on a desktop. There is no native app and nothing to install from a store.
+A household web app for everyone who runs a home together: **admins** plan the week, and **everyone else** works from their phone and ticks things off. It runs in the browser at one URL, on a phone and on a desktop. There is no native app and nothing to install from a store.
 
 Five areas:
 
 - **Tasks** — once-off and recurring, each with an assignee.
 - **Menus** — lunch and dinner for every day, with as many dishes per sitting as the household needs and each marked "on the day" or "day before".
-- **Recipes** — the household's own cookbook, linkable from any dish on the menu.
+- **Recipes** — the household's own cookbook, written by anyone who works here and linkable from any dish on the menu.
 - **Groceries** — a weekly list that locks on Friday evening, is ordered on Monday, and carries out-of-stock items onto the next list.
 - **Reminders** — a lock-day nudge and an order-day summary, by email and in the app.
 
@@ -38,7 +38,7 @@ Then create the household and your own admin account:
 npm run db:seed
 ```
 
-It asks for a household name, your name, your email and a password. Sign in at <http://localhost:3000>, then open **Settings** and add the person who works with you. **Their name is what the whole app shows from then on** — every screen, both theirs and yours, uses it.
+It asks for a household name, your name, your email and a password. Sign in at <http://localhost:3000>, then open **Settings** and add the people who work with you. **The name you give someone is what the whole app shows from then on** — every screen, theirs and yours, uses it. Add as many as you need; each gets their own login, their own tasks and their own attendance, and anyone can be made an admin.
 
 To see the app with something in it before you put real data in:
 
@@ -51,11 +51,11 @@ That fills in sample tasks, a two-week menu and two grocery lists. It deletes ev
 ## How the week works
 
 - **Working days** default to Monday to Friday. Click any day in the dashboard's week strip to record what actually happened: worked, off, sick or on leave, with an optional note. Days that follow the usual pattern are not stored at all.
-- **Attendance** has its own admin tab, one calendar month at a time with month-by-month navigation, plus a summary on the dashboard. Record a single day by clicking it, or a whole run at once. Leave can be booked months ahead: pick 14 December to 4 January, choose Leave, save.
+- **Attendance** is per person and has its own admin tab, one calendar month at a time with month-by-month navigation, plus a summary per person on the dashboard. Record a single day by clicking it, or a whole run at once. Leave can be booked months ahead: pick 14 December to 4 January, choose Leave, save. One person being off never affects anybody else's tasks.
 - **Recurring tasks** set to "working days only" follow that calendar. A Saturday marked as worked picks up the normal daily tasks with nothing to re-create; a sick day takes them away.
 - **Day-before meal prep** lands on the last day actually worked. A Monday dinner prepped in advance shows up on Friday when nobody works the weekend, and on Saturday when they do.
 - **A meal slot holds several dishes**, each optionally named for a person, because households often eat differently at the same sitting. A slot with nothing planned does not appear on the menu at all.
-- **Recipes** attach to a dish, so the method is there with the meal rather than being asked for.
+- **Recipes** attach to a dish, so the method is there with the meal rather than being asked for. Anyone can write one; you can edit your own, and an admin can edit any.
 - **The grocery list** opens the moment the previous one locks, locks the following Friday at 18:00 household time, and is ordered on the Monday after that. Anything added after the lock lands on the next list automatically. The lock is enforced on the server by comparing the time, not by a scheduled job, so it cannot be missed. It binds the employee only: the admin can add to, edit and remove from any list at any time.
 - **Ordering** gives each item one of three outcomes: ordered, out of stock, or not needed. Out of stock moves the item onto a later list, keeping its quantity, its note and a count of how many times it has moved.
 

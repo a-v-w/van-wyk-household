@@ -13,7 +13,7 @@ import {
   type IsoDate,
 } from "@/lib/dates";
 import { groupBySlot, loadMeals, SLOT_LABEL } from "@/lib/meals";
-import { loadWorkdayCalendar } from "@/lib/workdays";
+import { loadCalendars } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +21,7 @@ export const metadata: Metadata = { title: "Menu" };
 
 export default async function MenuPage() {
   const viewer = await requireViewer();
-  const { household } = viewer;
+  const { household, user } = viewer;
   const today = todayIn(household.timezone);
 
   const thisMonday = startOfIsoWeek(today);
@@ -29,8 +29,9 @@ export default async function MenuPage() {
   const from = thisMonday;
   const to = shiftDate(nextMonday, 6);
 
-  const calendar = await loadWorkdayCalendar(household, from, to);
-  const meals = await loadMeals(household.id, from, to, calendar);
+  const calendars = await loadCalendars(household, [user.id], from, to);
+  const calendar = calendars.for(user.id);
+  const meals = await loadMeals(household.id, from, to, calendars);
 
   const weeks: { monday: IsoDate; label: string }[] = [
     { monday: thisMonday, label: "This week" },

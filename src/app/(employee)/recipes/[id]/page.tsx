@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { RecipeView } from "@/components/recipe-view";
-import { Card, IconChevronLeft } from "@/components/ui";
+import {
+  Card,
+  IconChevronLeft,
+  IconPencil,
+  buttonClass,
+} from "@/components/ui";
 import { requireViewer } from "@/lib/auth";
 import { loadRecipe } from "@/lib/recipes";
 
@@ -34,13 +39,24 @@ export default async function EmployeeRecipePage({
 
   return (
     <div className="flex flex-col gap-4 px-4 pt-2 pb-8">
-      <Link
-        href="/recipes"
-        className="flex items-center gap-1 px-1 text-sm font-bold text-accent"
-      >
-        <IconChevronLeft size={16} />
-        All recipes
-      </Link>
+      <div className="flex items-center justify-between gap-3 px-1">
+        <Link
+          href="/recipes"
+          className="flex items-center gap-1 text-sm font-bold text-accent"
+        >
+          <IconChevronLeft size={16} />
+          All recipes
+        </Link>
+        {viewer.isAdmin || recipe.createdBy === viewer.user.id ? (
+          <Link
+            href={`/recipes/${recipe.id}/edit`}
+            className={buttonClass("secondary", "sm")}
+          >
+            <IconPencil size={14} />
+            Edit
+          </Link>
+        ) : null}
+      </div>
 
       <Card className="p-5">
         <RecipeView recipe={recipe} />

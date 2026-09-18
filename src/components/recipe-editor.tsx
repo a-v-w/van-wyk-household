@@ -20,7 +20,16 @@ export type RecipeValues = {
   sourceUrl: string;
 };
 
-export function RecipeEditor({ values }: { values: RecipeValues }) {
+export function RecipeEditor({
+  values,
+  returnTo,
+  canArchive = true,
+}: {
+  values: RecipeValues;
+  /** Where Cancel and a successful save land. */
+  returnTo: string;
+  canArchive?: boolean;
+}) {
   const router = useRouter();
   const [state, action, saving] = useActionState<RecipeFormState, FormData>(
     saveRecipe,
@@ -29,8 +38,8 @@ export function RecipeEditor({ values }: { values: RecipeValues }) {
   const [archiving, startArchive] = useTransition();
 
   useEffect(() => {
-    if (state?.ok) router.push("/admin/recipes");
-  }, [state, router]);
+    if (state?.ok) router.push(returnTo);
+  }, [state, router, returnTo]);
 
   return (
     <form action={action} className="flex flex-col gap-5">
@@ -93,7 +102,7 @@ export function RecipeEditor({ values }: { values: RecipeValues }) {
 
       <Field
         label="Method"
-        hint="One step per paragraph, or number them. They are numbered for her automatically."
+        hint="One step per paragraph, or number them. They are numbered automatically in the kitchen."
       >
         <textarea
           id="method"
@@ -136,19 +145,19 @@ export function RecipeEditor({ values }: { values: RecipeValues }) {
         </button>
         <button
           type="button"
-          onClick={() => router.push("/admin/recipes")}
+          onClick={() => router.push(returnTo)}
           className={buttonClass("ghost")}
         >
           Cancel
         </button>
-        {values.id ? (
+        {values.id && canArchive ? (
           <button
             type="button"
             disabled={archiving}
             onClick={() =>
               startArchive(async () => {
                 await archiveRecipe(values.id as number);
-                router.push("/admin/recipes");
+                router.push(returnTo);
               })
             }
             className={buttonClass("danger", "md", "ml-auto")}

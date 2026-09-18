@@ -1,6 +1,6 @@
 import "server-only";
 
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db } from "@/db";
@@ -24,7 +24,8 @@ export const currentViewer = cache(async (): Promise<Viewer | null> => {
   const user = await db.query.users.findFirst({
     where: eq(users.id, session.userId),
   });
-  if (!user) return null;
+  // Someone who has left keeps their history but cannot get back in.
+  if (!user || user.archivedAt) return null;
 
   const household = await db.query.households.findFirst({
     where: eq(households.id, user.householdId),
@@ -48,26 +49,56 @@ export async function requireAdmin(): Promise<Viewer> {
   return viewer;
 }
 
-/** Everyone in the household, admin first, for assignee pickers. */
+function byRoleThenName(a: User, b: User): number {
+  if (a.role !== b.role) return a.role === "admin" ? -1 : 1;
+  return a.name.localeCompare(b.name);
+}
+
+/** Everyone still with the household, admin first, for assignee pickers. */
 export const householdMembers = cache(
+  async (householdId: number): Promise<User[]> => {
+    const members = await db.query.users.findMany({
+      where: and(eq(users.householdId, householdId), isNull(users.archivedAt)),
+    });
+    return members.sort(byRoleThenName);
+  },
+);
+
+/** Everyone ever, including people who have left. */
+export const allHouseholdMembers = cache(
   async (householdId: number): Promise<User[]> => {
     const members = await db.query.users.findMany({
       where: eq(users.householdId, householdId),
     });
-    return members.sort((a, b) => {
-      if (a.role !== b.role) return a.role === "admin" ? -1 : 1;
-      return a.name.localeCompare(b.name);
-    });
+    return members.sort(byRoleThenName);
   },
 );
 
-/** The employee of the household, if one has been added yet. */
-export const householdEmployee = cache(
-  async (householdId: number): Promise<User | null> => {
+/** The people who work here, in the order they are shown everywhere. */
+export const householdStaff = cache(
+  async (householdId: number): Promise<User[]> => {
     const members = await householdMembers(householdId);
-    return members.find((m) => m.role === "employee") ?? null;
+    return members.filter((m) => m.role === "employee");
   },
 );
+
+/** The first employee, for screens that still need a sensible default. */
+export const householdEmployee = cache(
+  async (householdId: number): Promise<User | null> => {
+    const staff = await householdStaff(householdId);
+    return staff[0] ?? null;
+  },
+);
+
+/** One person of this household, archived or not. */
+export async function householdMember(
+  householdId: number,
+  userId: number,
+): Promise<User | undefined> {
+  return db.query.users.findFirst({
+    where: and(eq(users.id, userId), eq(users.householdId, householdId)),
+  });
+}
 
 /** "you" when it is the viewer, otherwise the person's own name. */
 export function displayName(person: User, viewer: Viewer): string {

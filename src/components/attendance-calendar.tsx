@@ -10,6 +10,7 @@ import {
 import { STATUS_LABEL, type WorkdayStatus } from "@/lib/workday-constants";
 
 export type CalendarDay = {
+  userId: number;
   date: string;
   dayNumber: string;
   longDate: string;

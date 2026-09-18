@@ -16,7 +16,7 @@ import {
   startOfIsoWeek,
   type IsoDate,
 } from "@/lib/dates";
-import type { WorkdayCalendar } from "@/lib/workdays";
+import type { CalendarSet, WorkdayCalendar } from "@/lib/workdays";
 
 export type TaskOccurrence = {
   task: Task;
@@ -163,7 +163,11 @@ type LoadOptions = {
   householdId: number;
   from: IsoDate;
   to: IsoDate;
-  calendar: WorkdayCalendar;
+  /**
+   * Everyone's calendars. A task is expanded against its own assignee's days,
+   * so one person's sick day never removes another person's tasks.
+   */
+  calendars: CalendarSet;
   /** Only this person's tasks. Omit for everyone's. */
   assigneeId?: number;
   /** Include once-off tasks whose due date is before `from` and not ticked. */
@@ -178,7 +182,7 @@ export async function loadOccurrences({
   householdId,
   from,
   to,
-  calendar,
+  calendars,
   assigneeId,
   includeOverdue = false,
 }: LoadOptions): Promise<TaskOccurrence[]> {
@@ -225,6 +229,7 @@ export async function loadOccurrences({
 
   for (const task of rows) {
     const assignee = (task as typeof task & { assignee: User | null }).assignee;
+    const calendar = calendars.for(task.assignedTo);
 
     // Overdue once-off tasks surface on today's list until they are ticked.
     if (

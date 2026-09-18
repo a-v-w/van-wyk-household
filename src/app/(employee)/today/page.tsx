@@ -19,7 +19,7 @@ import {
 } from "@/lib/groceries";
 import { loadDayKitchen, SLOT_LABEL } from "@/lib/meals";
 import { describeRule, loadOccurrences } from "@/lib/tasks";
-import { loadWorkdayCalendar } from "@/lib/workdays";
+import { loadCalendars } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
 
@@ -30,7 +30,8 @@ export default async function TodayPage() {
   const { household, user } = viewer;
   const today: IsoDate = todayIn(household.timezone);
 
-  const calendar = await loadWorkdayCalendar(household, today, today);
+  const calendars = await loadCalendars(household, [user.id], today, today);
+  const calendar = calendars.for(user.id);
   const working = calendar.isWorking(today);
 
   const [occurrences, kitchen, cycle] = await Promise.all([
@@ -38,11 +39,11 @@ export default async function TodayPage() {
       householdId: household.id,
       from: today,
       to: today,
-      calendar,
+      calendars,
       assigneeId: user.id,
       includeOverdue: true,
     }),
-    loadDayKitchen(household.id, today, calendar),
+    loadDayKitchen(household.id, today, calendars),
     currentCycle(household),
   ]);
 

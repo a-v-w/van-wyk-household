@@ -6,7 +6,7 @@ import {
   IconChevronRight,
   buttonClass,
 } from "@/components/ui";
-import { requireAdmin } from "@/lib/auth";
+import { householdStaff, requireAdmin } from "@/lib/auth";
 import {
   formatDate,
   formatDayNumber,
@@ -19,7 +19,7 @@ import {
 } from "@/lib/dates";
 import { loadMeals, type MealWithPrep } from "@/lib/meals";
 import { recipeOptions } from "@/lib/recipes";
-import { loadWorkdayCalendar } from "@/lib/workdays";
+import { loadCalendars } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
 
@@ -41,12 +41,14 @@ export default async function AdminMenusPage({
   const monday: IsoDate = startOfIsoWeek(requested);
   const week = isoWeek(monday);
 
-  const calendar = await loadWorkdayCalendar(
+  const staff = await householdStaff(household.id);
+  const calendars = await loadCalendars(
     household,
+    staff.map((person) => person.id),
     shiftDate(monday, -7),
     week[6],
   );
-  const meals = await loadMeals(household.id, monday, week[6], calendar);
+  const meals = await loadMeals(household.id, monday, week[6], calendars);
   const recipes = await recipeOptions(household.id);
 
   function entries(date: IsoDate, slot: "lunch" | "dinner"): MenuEntry[] {
@@ -63,12 +65,12 @@ export default async function AdminMenusPage({
   }
 
   const days: MenuDay[] = week.map((date) => {
-    const prepDate = calendar.previousWorkingDay(date);
+    const prepDate = calendars.previousWorkingDay(date);
     return {
       date,
       weekday: weekdayShort(date),
       dayNumber: formatDayNumber(date),
-      working: calendar.isWorking(date),
+      working: calendars.anyoneWorking(date),
       isToday: date === today,
       prepLabel: `${weekdayShort(prepDate)} ${formatDayNumber(prepDate)}`,
       prepRolledBack: prepDate !== shiftDate(date, -1),

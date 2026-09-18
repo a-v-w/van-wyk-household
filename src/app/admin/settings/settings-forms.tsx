@@ -2,7 +2,6 @@
 
 import { useActionState } from "react";
 import {
-  saveEmployee,
   saveHouseholdSettings,
   saveOwnAccount,
   type SettingsState,
@@ -172,81 +171,6 @@ export function HouseholdForm({
           className={buttonClass("primary")}
         >
           {pending ? "Saving…" : "Save settings"}
-        </button>
-      </div>
-    </form>
-  );
-}
-
-/* ------------------------------------------------------------- the people -- */
-
-export function EmployeeForm({
-  employee,
-}: {
-  employee: { id: number; name: string; email: string } | null;
-}) {
-  const [state, action, pending] = useActionState<SettingsState, FormData>(
-    saveEmployee,
-    undefined,
-  );
-
-  return (
-    <form action={action} className="flex flex-col gap-5">
-      {employee ? (
-        <input type="hidden" name="id" value={employee.id} />
-      ) : null}
-
-      <Field
-        label="Their name"
-        hint="This is the name the whole app uses, on both your screens and theirs."
-      >
-        <input
-          id="employee-name"
-          name="name"
-          defaultValue={employee?.name ?? ""}
-          required
-          placeholder="e.g. Grace Dlamini"
-          className={inputClass}
-        />
-      </Field>
-
-      <Field label="Email">
-        <input
-          id="employee-email"
-          type="email"
-          name="email"
-          defaultValue={employee?.email ?? ""}
-          required
-          className={inputClass}
-        />
-      </Field>
-
-      <Field
-        label={employee ? "New password" : "Password"}
-        hint={
-          employee
-            ? "Leave empty to keep the current one."
-            : "At least 8 characters. Give it to them directly."
-        }
-      >
-        <input
-          id="employee-password"
-          type="password"
-          name="password"
-          autoComplete="new-password"
-          className={inputClass}
-        />
-      </Field>
-
-      <Message state={state} />
-
-      <div>
-        <button
-          type="submit"
-          disabled={pending}
-          className={buttonClass("primary")}
-        >
-          {pending ? "Saving…" : employee ? "Save" : "Create the account"}
         </button>
       </div>
     </form>

@@ -90,6 +90,10 @@ export const users = pgTable(
     email: text("email").notNull(),
     passwordHash: text("password_hash").notNull(),
     role: userRole("role").notNull().default("employee"),
+    /** What they do here, e.g. "Nanny", "Cleaner". Free text, shown as a chip. */
+    jobTitle: text("job_title"),
+    /** Set when someone leaves. Their history stays; they cannot sign in. */
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -100,9 +104,10 @@ export const users = pgTable(
 /* --------------------------------------------------- workday overrides --- */
 
 /**
- * A single date that departs from the household's default working weekdays:
- * a Saturday that was worked, a weekday off sick, a day of leave. Dates that
- * follow the usual pattern have no row.
+ * One person's single date that departs from the usual working weekdays: a
+ * Saturday that was worked, a weekday off sick, a day of leave. Attendance is
+ * per person, so two people can be off on different days. Dates that follow
+ * the usual pattern have no row.
  */
 export const workdayOverrides = pgTable(
   "workday_overrides",
@@ -111,6 +116,9 @@ export const workdayOverrides = pgTable(
     householdId: integer("household_id")
       .notNull()
       .references(() => households.id, { onDelete: "cascade" }),
+    userId: integer("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
     date: date("date").notNull(),
     status: workdayStatus("status").notNull().default("off"),
     note: text("note"),
@@ -122,7 +130,8 @@ export const workdayOverrides = pgTable(
       .defaultNow(),
   },
   (t) => [
-    unique("workday_overrides_household_date_unique").on(t.householdId, t.date),
+    unique("workday_overrides_user_date_unique").on(t.userId, t.date),
+    index("workday_overrides_household_date_idx").on(t.householdId, t.date),
   ],
 );
 

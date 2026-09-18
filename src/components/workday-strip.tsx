@@ -6,6 +6,7 @@ import { cn } from "@/components/ui";
 import { STATUS_LABEL, type WorkdayStatus } from "@/lib/workday-constants";
 
 export type WorkdayCell = {
+  userId: number;
   date: string;
   weekday: string;
   dayNumber: string;

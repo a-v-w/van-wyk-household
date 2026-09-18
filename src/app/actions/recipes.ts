@@ -4,7 +4,8 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
 import { recipes } from "@/db/schema";
-import { requireAdmin } from "@/lib/auth";
+import { requireViewer } from "@/lib/auth";
+import { normaliseLines } from "@/lib/recipes";
 
 export type RecipeFormState =
   | { error?: string; ok?: boolean; id?: number }
@@ -22,14 +23,17 @@ export async function saveRecipe(
   _state: RecipeFormState,
   formData: FormData,
 ): Promise<RecipeFormState> {
-  const viewer = await requireAdmin();
+  const viewer = await requireViewer();
 
   const id = Number(formData.get("id") ?? 0);
   const title = String(formData.get("title") ?? "").trim();
   const summary = String(formData.get("summary") ?? "").trim() || null;
   const servings = String(formData.get("servings") ?? "").trim() || null;
-  const ingredients = String(formData.get("ingredients") ?? "").trim() || null;
-  const method = String(formData.get("method") ?? "").trim() || null;
+  // Textareas come back with CRLF; store plain newlines so the steps split.
+  const ingredients =
+    normaliseLines(String(formData.get("ingredients") ?? "")).trim() || null;
+  const method =
+    normaliseLines(String(formData.get("method") ?? "")).trim() || null;
   const rawUrl = String(formData.get("sourceUrl") ?? "").trim();
   const minutes = String(formData.get("prepMinutes") ?? "").trim();
 
@@ -65,6 +69,9 @@ export async function saveRecipe(
       where: and(eq(recipes.id, id), eq(recipes.householdId, viewer.household.id)),
     });
     if (!existing) return { error: "That recipe no longer exists." };
+    if (!viewer.isAdmin && existing.createdBy !== viewer.user.id) {
+      return { error: "That recipe belongs to someone else." };
+    }
 
     await db.update(recipes).set(values).where(eq(recipes.id, id));
     refresh();
@@ -85,18 +92,25 @@ export async function saveRecipe(
 }
 
 export async function archiveRecipe(recipeId: number): Promise<void> {
-  const viewer = await requireAdmin();
+  const viewer = await requireViewer();
+  const existing = await db.query.recipes.findFirst({
+    where: and(
+      eq(recipes.id, recipeId),
+      eq(recipes.householdId, viewer.household.id),
+    ),
+  });
+  if (!existing) return;
+  if (!viewer.isAdmin && existing.createdBy !== viewer.user.id) return;
+
   await db
     .update(recipes)
     .set({ archivedAt: new Date() })
-    .where(
-      and(eq(recipes.id, recipeId), eq(recipes.householdId, viewer.household.id)),
-    );
+    .where(eq(recipes.id, recipeId));
   refresh();
 }
 
 export async function restoreRecipe(recipeId: number): Promise<void> {
-  const viewer = await requireAdmin();
+  const viewer = await requireViewer();
   await db
     .update(recipes)
     .set({ archivedAt: null })

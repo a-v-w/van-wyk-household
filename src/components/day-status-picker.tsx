@@ -11,6 +11,8 @@ import {
 } from "@/lib/workday-constants";
 
 export type PickerDay = {
+  /** Whose day this is. */
+  userId: number;
   date: string;
   longDate: string;
   status: WorkdayStatus;
@@ -35,7 +37,7 @@ export function DayStatusPicker({
 
   function choose(status: WorkdayStatus) {
     startTransition(async () => {
-      await setDayStatus(day.date, status, note);
+      await setDayStatus(day.userId, day.date, status, note);
       onDone();
     });
   }
@@ -107,7 +109,7 @@ export function DayStatusPicker({
             title="Forget this record and follow the usual pattern"
             onClick={() =>
               startTransition(async () => {
-                await clearDayStatus(day.date);
+                await clearDayStatus(day.userId, day.date);
                 onDone();
               })
             }

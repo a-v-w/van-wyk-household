@@ -11,7 +11,7 @@ import {
   todayIn,
 } from "@/lib/dates";
 import { describeRule, loadOccurrences } from "@/lib/tasks";
-import { loadWorkdayCalendar } from "@/lib/workdays";
+import { loadCalendars } from "@/lib/workdays";
 
 export const dynamic = "force-dynamic";
 
@@ -23,12 +23,13 @@ export default async function TasksPage() {
   const today = todayIn(household.timezone);
   const to = shiftDate(today, 13);
 
-  const calendar = await loadWorkdayCalendar(household, today, to);
+  const calendars = await loadCalendars(household, [user.id], today, to);
+  const calendar = calendars.for(user.id);
   const occurrences = await loadOccurrences({
     householdId: household.id,
     from: today,
     to,
-    calendar,
+    calendars,
     assigneeId: user.id,
   });
 
