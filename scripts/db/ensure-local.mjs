@@ -4,15 +4,19 @@
 //
 // - Creates .env.local from .env.example if there is no env file yet.
 // - Skips itself when DATABASE_URL points at a non-local host (e.g. Neon).
-// - Starts Homebrew Postgres if it is installed but not running.
+// - Talks to the server with the `pg` driver this project already depends on,
+//   so it needs no psql/createdb on PATH and works the same on every OS.
+// - Starts Homebrew Postgres if it is installed but not running (macOS).
 // - Creates the database if it is missing, then applies drizzle migrations.
 //
 // Set SKIP_DB_ENSURE=1 to bypass entirely.
 
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { setTimeout as sleep } from "node:timers/promises";
 import { existsSync, copyFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { config as loadEnv } from "dotenv";
+import pg from "pg";
 
 const root = resolve(import.meta.dirname, "..", "..");
 const log = (msg) => console.log(`[db] ${msg}`);
@@ -49,8 +53,6 @@ try {
 const host = url.hostname || "localhost";
 const port = url.port || "5432";
 const dbName = decodeURIComponent(url.pathname.replace(/^\//, ""));
-const user = url.username ? decodeURIComponent(url.username) : undefined;
-const password = url.password ? decodeURIComponent(url.password) : undefined;
 
 const localHosts = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 if (!localHosts.has(host)) {
@@ -59,86 +61,133 @@ if (!localHosts.has(host)) {
 }
 if (!dbName) fail("DATABASE_URL has no database name in its path.");
 
-const pgEnv = {
-  ...process.env,
-  PGHOST: host,
-  PGPORT: port,
-  ...(user ? { PGUSER: user } : {}),
-  ...(password ? { PGPASSWORD: password } : {}),
-};
-
-function have(cmd) {
-  return spawnSync("which", [cmd], { stdio: "ignore" }).status === 0;
-}
-function run(cmd, args, opts = {}) {
-  return spawnSync(cmd, args, { env: pgEnv, encoding: "utf8", ...opts });
+/** The same connection string, pointed at an admin database instead. */
+function adminUrl(database) {
+  const copy = new URL(rawUrl);
+  copy.pathname = `/${database}`;
+  return copy.toString();
 }
 
-for (const tool of ["pg_isready", "psql", "createdb"]) {
-  if (!have(tool)) {
-    fail(
-      `${tool} not found on PATH. Install Postgres (brew install postgresql@18) ` +
-        `or make sure its bin directory is on your PATH.`,
-    );
+/**
+ * Opens a short-lived connection. Returns the client, or null when the server
+ * will not talk to us for this database.
+ */
+async function connect(connectionString) {
+  const client = new pg.Client({
+    connectionString,
+    connectionTimeoutMillis: 4000,
+  });
+  try {
+    await client.connect();
+    return client;
+  } catch (error) {
+    await client.end().catch(() => {});
+    return { error };
   }
 }
 
-// 2. Is the server up? If not, try Homebrew before giving up.
-function serverReady() {
-  return run("pg_isready", ["-q"]).status === 0;
+function have(cmd) {
+  const which = process.platform === "win32" ? "where" : "which";
+  return spawnSync(which, [cmd], { stdio: "ignore" }).status === 0;
 }
 
-if (!serverReady()) {
+/** Any successful connection means the server is up, even if our database is not there yet. */
+async function serverReady() {
+  for (const database of ["postgres", "template1", dbName]) {
+    const result = await connect(adminUrl(database));
+    if (!result.error) {
+      await result.end().catch(() => {});
+      return true;
+    }
+    // "database does not exist" still proves the server answered.
+    if (result.error?.code === "3D000") return true;
+  }
+  return false;
+}
+
+// 2. Is the server up? If not, try Homebrew before giving up.
+if (!(await serverReady())) {
   log(`no Postgres server answering on ${host}:${port}`);
   let started = false;
+
   if (have("brew")) {
-    const list = run("brew", ["list", "--formula"]);
+    const list = spawnSync("brew", ["list", "--formula"], { encoding: "utf8" });
     const formula = (list.stdout || "")
       .split(/\s+/)
       .filter((f) => /^postgresql(@\d+)?$/.test(f))
       .sort()
       .at(-1);
+
     if (formula) {
       log(`starting ${formula} via brew services`);
-      const res = run("brew", ["services", "start", formula], { stdio: "inherit" });
+      const res = spawnSync("brew", ["services", "start", formula], {
+        stdio: "inherit",
+      });
       if (res.status === 0) {
         const deadline = Date.now() + 20_000;
-        while (Date.now() < deadline && !serverReady()) {
-          execFileSync("sleep", ["0.5"]);
+        while (Date.now() < deadline && !started) {
+          await sleep(500);
+          started = await serverReady();
         }
-        started = serverReady();
       }
     }
   }
+
   if (!started) {
     fail(
-      `could not reach Postgres at ${host}:${port}. Start it (for Homebrew: ` +
-        `brew services start postgresql@18) and rerun.`,
+      `could not reach Postgres at ${host}:${port}. Start your server and ` +
+        `rerun. On macOS with Homebrew: brew services start postgresql@18. ` +
+        `On Windows, start the "postgresql" service. If it is running but ` +
+        `refusing the login, put the right user and password into ` +
+        `DATABASE_URL in .env.local.`,
     );
   }
 }
 
 // 3. Create the database if it does not exist.
-const exists = run("psql", [
-  "-d",
-  "postgres",
-  "-Atc",
-  `select 1 from pg_database where datname = '${dbName.replace(/'/g, "''")}'`,
-]);
-if (exists.status !== 0) {
-  fail(`could not query the server:\n${exists.stderr}`);
-}
-if (exists.stdout.trim() === "1") {
+let admin = await connect(adminUrl("postgres"));
+if (admin.error) admin = await connect(adminUrl("template1"));
+
+if (admin.error) {
+  // No admin database we can reach. If the target already exists, that is fine.
+  const direct = await connect(rawUrl);
+  if (direct.error) {
+    fail(
+      `connected to the server but could not open a database: ` +
+        `${direct.error.message}`,
+    );
+  }
+  await direct.end().catch(() => {});
   log(`database "${dbName}" exists`);
 } else {
-  log(`creating database "${dbName}"`);
-  const created = run("createdb", [dbName], { stdio: "inherit" });
-  if (created.status !== 0) fail(`createdb failed for "${dbName}"`);
+  const found = await admin.query(
+    "select 1 from pg_database where datname = $1",
+    [dbName],
+  );
+  if (found.rowCount > 0) {
+    log(`database "${dbName}" exists`);
+  } else {
+    log(`creating database "${dbName}"`);
+    // Identifiers cannot be parameterised, so quote it properly instead.
+    await admin
+      .query(`create database "${dbName.replace(/"/g, '""')}"`)
+      .catch((error) => {
+        fail(`could not create "${dbName}": ${error.message}`);
+      });
+  }
+  await admin.end().catch(() => {});
 }
 
 // 4. Apply migrations.
 log("applying migrations");
-const migrate = spawnSync("npx", ["drizzle-kit", "migrate"], {
+// Run drizzle-kit's own entry point with this Node, rather than going through
+// npx and a shell: no PATH lookup, no quoting, same behaviour on every OS.
+const drizzleKit = resolve(root, "node_modules", "drizzle-kit", "bin.cjs");
+if (!existsSync(drizzleKit)) {
+  fail("drizzle-kit is not installed. Run `npm install` first.");
+}
+
+const migrate = spawnSync(process.execPath, [drizzleKit, "migrate"], {
   cwd: root,
   stdio: "inherit",
   env: { ...process.env, DATABASE_URL: rawUrl },
@@ -146,4 +195,4 @@ const migrate = spawnSync("npx", ["drizzle-kit", "migrate"], {
 if (migrate.status !== 0) fail("drizzle-kit migrate failed");
 
 console.log(); // drizzle-kit leaves its spinner line open
-log(`ready: ${rawUrl}`);
+log(`ready: ${rawUrl.replace(/:[^:@/]*@/, ":***@")}`);

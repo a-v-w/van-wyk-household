@@ -1,0 +1,1 @@
+ALTER TABLE "workday_overrides" DROP COLUMN "is_working";

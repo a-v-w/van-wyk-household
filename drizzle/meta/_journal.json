@@ -8,6 +8,69 @@
       "when": 1789708794349,
       "tag": "0000_init",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789714908750,
+      "tag": "0001_household_app",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789716043042,
+      "tag": "0002_meals_per_person",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789716224514,
+      "tag": "0003_workday_status",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789716234190,
+      "tag": "0004_drop_is_working",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789716412139,
+      "tag": "0005_recipes",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789724156641,
+      "tag": "0006_people_and_per_person_attendance",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789724164838,
+      "tag": "0007_attendance_per_person",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1789725656239,
+      "tag": "0008_grocery_lists",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789725789822,
+      "tag": "0009_notification_per_list",
+      "breakpoints": true
     }
   ]
 }
