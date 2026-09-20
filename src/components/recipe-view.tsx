@@ -1,12 +1,24 @@
-import type { Recipe } from "@/db/schema";
 import { Chip, IconClock } from "@/components/ui";
-import { ingredientLines, methodSteps, safeSourceUrl } from "@/lib/recipes";
+
+/**
+ * A recipe shaped for reading. The ingredient lines and method steps are
+ * split on the server (see `@/lib/page-data/recipe-detail`), so this can
+ * render on the client without touching `@/lib/recipes`.
+ */
+export type RecipeReading = {
+  title: string;
+  summary: string | null;
+  servings: string | null;
+  prepMinutes: number | null;
+  ingredients: string[];
+  steps: string[];
+  /** The source link, only when it is one we are willing to render. */
+  link: string | null;
+};
 
 /** The recipe as the person cooking reads it. Used on both sides of the app. */
-export function RecipeView({ recipe }: { recipe: Recipe }) {
-  const ingredients = ingredientLines(recipe);
-  const steps = methodSteps(recipe);
-  const link = safeSourceUrl(recipe.sourceUrl);
+export function RecipeView({ recipe }: { recipe: RecipeReading }) {
+  const { ingredients, steps, link } = recipe;
 
   return (
     <article className="flex flex-col gap-5">

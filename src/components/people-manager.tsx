@@ -18,6 +18,7 @@ import {
   cn,
   inputClass,
 } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 
 export type PersonRow = {
   id: number;
@@ -142,6 +143,7 @@ function PersonLine({
           onClick={() =>
             startTransition(async () => {
               await restorePerson(person.id);
+              invalidateData();
             })
           }
           className={buttonClass("secondary", "sm")}
@@ -157,6 +159,7 @@ function PersonLine({
           onClick={() =>
             startTransition(async () => {
               await archivePerson(person.id);
+              invalidateData();
             })
           }
           className={buttonClass("danger", "sm")}
@@ -178,7 +181,11 @@ function PersonForm({
   canChangeRole: boolean;
 }) {
   const [state, action, saving] = useActionState<PersonState, FormData>(
-    savePerson,
+    async (previous, formData) => {
+      const result = await savePerson(previous, formData);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
   const [role, setRole] = useState(person?.role ?? "employee");

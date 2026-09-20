@@ -119,7 +119,7 @@ One Vercel Cron job hits `/api/reminders` daily at 07:00 UTC (09:00 SAST). The r
 
 ## Vercel and Neon
 
-`vercel.json` disables Vercel's Git integration outright (`git.deploymentEnabled: false`), so pushes never build or deploy, on any branch. As a second guard, the `ignoreCommand` skips the build step for any branch other than `main` should Git deployments ever be turned back on.
+The Vercel project's Git integration is enabled in the dashboard, which overrides the `git.deploymentEnabled: false` in `vercel.json`, so a push to `main` builds and deploys production. The `ignoreCommand` skips the build for any other branch. `regions` pins the functions to London (`lhr1`), next to the Neon database in `eu-west-2`; keep the two together or every query pays a transatlantic round trip.
 
 Deploys are manual, in one of two ways:
 

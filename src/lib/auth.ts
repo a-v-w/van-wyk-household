@@ -4,7 +4,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { redirect } from "next/navigation";
 import { cache } from "react";
 import { db } from "@/db";
-import { households, users, type Household, type User } from "@/db/schema";
+import { users, type Household, type User } from "@/db/schema";
 import { readSession } from "@/lib/session";
 
 export type Viewer = {
@@ -21,15 +21,15 @@ export const currentViewer = cache(async (): Promise<Viewer | null> => {
   const session = await readSession();
   if (!session) return null;
 
-  const user = await db.query.users.findFirst({
+  // One round trip for the person and their household together.
+  const row = await db.query.users.findFirst({
     where: eq(users.id, session.userId),
+    with: { household: true },
   });
   // Someone who has left keeps their history but cannot get back in.
-  if (!user || user.archivedAt) return null;
+  if (!row || row.archivedAt) return null;
 
-  const household = await db.query.households.findFirst({
-    where: eq(households.id, user.householdId),
-  });
+  const { household, ...user } = row;
   if (!household) return null;
 
   return { user, household, isAdmin: user.role === "admin" };

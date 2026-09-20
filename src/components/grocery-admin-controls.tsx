@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { finishOrdering, unlockCycle } from "@/app/actions/groceries";
 import {
@@ -9,6 +8,7 @@ import {
   IconUnlock,
   buttonClass,
 } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 
 /** Copies the list as plain lines, for pasting into the shop's own app. */
 export function CopyListButton({ text }: { text: string }) {
@@ -43,7 +43,6 @@ export function UnlockButton({
   unlocked: boolean;
 }) {
   const [pending, startTransition] = useTransition();
-  const router = useRouter();
 
   return (
     <button
@@ -52,7 +51,7 @@ export function UnlockButton({
       onClick={() =>
         startTransition(async () => {
           await unlockCycle(cycleId, !unlocked);
-          router.refresh();
+          invalidateData();
         })
       }
       className={buttonClass("secondary", "sm")}
@@ -76,7 +75,6 @@ export function FinishOrderingButton({
   remaining: number;
 }) {
   const [pending, startTransition] = useTransition();
-  const router = useRouter();
 
   return (
     <button
@@ -85,7 +83,7 @@ export function FinishOrderingButton({
       onClick={() =>
         startTransition(async () => {
           await finishOrdering(cycleId);
-          router.refresh();
+          invalidateData();
         })
       }
       className={buttonClass("primary", "sm")}

@@ -4,6 +4,7 @@ import { toggleTask } from "@/app/actions/tasks";
 import { toggleMeal } from "@/app/actions/meals";
 import { CheckButton } from "@/components/check-button";
 import { Chip, cn } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 
 export type TaskRowData = {
   taskId: number;
@@ -28,7 +29,10 @@ export function TaskRow({ row }: { row: TaskRowData }) {
         done={row.done}
         disabled={!row.canTick}
         label={`${row.done ? "Untick" : "Tick off"} ${row.title}`}
-        onToggle={(next) => toggleTask(row.taskId, row.date, next)}
+        onToggle={async (next) => {
+          await toggleTask(row.taskId, row.date, next);
+          invalidateData();
+        }}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span
@@ -79,7 +83,10 @@ export function PrepRow({ row }: { row: PrepRowData }) {
         done={row.done}
         disabled={!row.canTick}
         label={`${row.done ? "Untick" : "Tick off"} ${row.title}`}
-        onToggle={(next) => toggleMeal(row.mealId, next)}
+        onToggle={async (next) => {
+          await toggleMeal(row.mealId, next);
+          invalidateData();
+        }}
       />
       <div className="flex min-w-0 flex-1 flex-col gap-1">
         <span

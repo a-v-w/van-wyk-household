@@ -8,6 +8,7 @@ import {
   type RecipeFormState,
 } from "@/app/actions/recipes";
 import { Field, buttonClass, cn, inputClass } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 
 export type RecipeValues = {
   id: number | null;
@@ -32,7 +33,11 @@ export function RecipeEditor({
 }) {
   const router = useRouter();
   const [state, action, saving] = useActionState<RecipeFormState, FormData>(
-    saveRecipe,
+    async (previous, formData) => {
+      const result = await saveRecipe(previous, formData);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
   const [archiving, startArchive] = useTransition();
@@ -157,6 +162,7 @@ export function RecipeEditor({
             onClick={() =>
               startArchive(async () => {
                 await archiveRecipe(values.id as number);
+                invalidateData();
                 router.push(returnTo);
               })
             }

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useActionState, useState, useTransition } from "react";
 import {
   copyPreviousWeek,
@@ -16,6 +15,7 @@ import {
   cn,
   inputClass,
 } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 
 type Slot = "lunch" | "dinner";
 
@@ -71,13 +71,27 @@ export function MenuEditor({
   recipes: { id: number; title: string }[];
   groceryLists: { id: number; name: string }[];
 }) {
-  const router = useRouter();
+  const [days, setDays] = useState(initialDays);
+  // Rows are edited locally. A refetch replaces them only while nothing here is
+  // unsaved, so a background refresh never throws away half-typed dishes, but
+  // a save or a copy does show what the server now holds.
+  const [dirty, setDirty] = useState(false);
+  const [seenDays, setSeenDays] = useState(initialDays);
   const [state, action, saving] = useActionState<MenuFormState, FormData>(
-    saveWeek,
+    async (previous, formData) => {
+      const result = await saveWeek(previous, formData);
+      if (result?.ok) setDirty(false);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
   const [copying, startCopy] = useTransition();
-  const [days, setDays] = useState(initialDays);
+
+  if (initialDays !== seenDays) {
+    setSeenDays(initialDays);
+    if (!dirty) setDays(initialDays);
+  }
 
   const saved = Boolean(state?.ok) && !saving;
 
@@ -87,6 +101,7 @@ export function MenuEditor({
     index: number,
     patch: Partial<MenuEntry>,
   ) {
+    setDirty(true);
     setDays((current) =>
       current.map((day) =>
         day.date !== date
@@ -102,6 +117,7 @@ export function MenuEditor({
   }
 
   function addEntry(date: string, slot: Slot) {
+    setDirty(true);
     setDays((current) =>
       current.map((day) =>
         day.date !== date ? day : { ...day, [slot]: [...day[slot], blank()] },
@@ -110,6 +126,7 @@ export function MenuEditor({
   }
 
   function removeEntry(date: string, slot: Slot, index: number) {
+    setDirty(true);
     setDays((current) =>
       current.map((day) =>
         day.date !== date
@@ -137,7 +154,8 @@ export function MenuEditor({
           onClick={() =>
             startCopy(async () => {
               await copyPreviousWeek(previousMonday, monday);
-              router.refresh();
+              setDirty(false);
+              invalidateData();
             })
           }
           className={buttonClass("secondary", "sm")}

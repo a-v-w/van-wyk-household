@@ -9,17 +9,21 @@ import { countdown, formatDate, type IsoDate } from "@/lib/dates";
 export function LockBanner({
   listName,
   locksAt,
+  timeLabel,
   orderDate,
   itemCount,
   href = "/groceries",
 }: {
   listName: string;
-  locksAt: Date;
+  /** The lock instant, as ISO. */
+  locksAt: string;
+  /** The lock time in the household zone, e.g. "17:00". */
+  timeLabel: string;
   orderDate: IsoDate | null;
   itemCount: number;
   href?: string;
 }) {
-  const left = countdown(locksAt);
+  const left = countdown(new Date(locksAt));
 
   return (
     <Link
@@ -29,12 +33,7 @@ export function LockBanner({
       <IconLock size={22} className="flex-none text-lock" />
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="text-sm font-extrabold text-lock">
-          {listName} closes today at{" "}
-          {locksAt.toLocaleTimeString("en-ZA", {
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: false,
-          })}
+          {listName} closes today at {timeLabel}
         </span>
         <span className="text-[13px] leading-snug text-lock">
           {orderDate

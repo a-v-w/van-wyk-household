@@ -6,6 +6,7 @@ import {
   removeIngredientsFromList,
 } from "@/app/actions/grocery-lists";
 import { IconCart, IconCheck, IconUndo, cn } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 
 export type IngredientTarget = { id: number; name: string };
 
@@ -36,6 +37,7 @@ export function IngredientsButton({
   function send(listId: number) {
     startTransition(async () => {
       const result = await addIngredientsToList(mealId, listId);
+      invalidateData();
       setMessage(result?.error ?? result?.ok ?? null);
       setChoosing(false);
       if (!result?.error) setAdded(true);
@@ -61,6 +63,7 @@ export function IngredientsButton({
           onClick={() =>
             startTransition(async () => {
               const result = await removeIngredientsFromList(mealId);
+              invalidateData();
               setMessage(result?.error ?? result?.ok ?? null);
               if (!result?.error) setAdded(false);
             })

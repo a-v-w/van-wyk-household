@@ -16,6 +16,7 @@ import {
   cn,
 } from "@/components/ui";
 import type { GroceryCategory } from "@/db/schema";
+import { invalidateData } from "@/lib/client-data";
 
 export type OutcomeRowData = {
   id: number;
@@ -123,6 +124,7 @@ export function GroceryOutcomeRow({ row }: { row: OutcomeRowData }) {
                 onClick={() =>
                   startTransition(async () => {
                     await carryItemOver(row.id, option.orderDate);
+                    invalidateData();
                     setShowLater(false);
                   })
                 }
@@ -156,6 +158,7 @@ export function GroceryOutcomeRow({ row }: { row: OutcomeRowData }) {
           onClick={() =>
             startTransition(async () => {
               await setItemOrdered(row.id, row.status !== "ordered");
+              invalidateData();
             })
           }
         >
@@ -170,6 +173,7 @@ export function GroceryOutcomeRow({ row }: { row: OutcomeRowData }) {
           onClick={() =>
             startTransition(async () => {
               await carryItemOver(row.id);
+              invalidateData();
             })
           }
           onContextMenu={(event) => {
@@ -193,6 +197,7 @@ export function GroceryOutcomeRow({ row }: { row: OutcomeRowData }) {
               } else {
                 await dropItem(row.id);
               }
+              invalidateData();
             })
           }
         >

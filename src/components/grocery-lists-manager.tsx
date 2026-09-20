@@ -17,6 +17,7 @@ import {
   cn,
   inputClass,
 } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 
 export type ListRow = {
   id: number;
@@ -153,6 +154,7 @@ function ListLine({
           onClick={() =>
             startTransition(async () => {
               await restoreGroceryList(list.id);
+              invalidateData();
             })
           }
           className={buttonClass("secondary", "sm")}
@@ -168,6 +170,7 @@ function ListLine({
           onClick={() =>
             startTransition(async () => {
               await archiveGroceryList(list.id);
+              invalidateData();
             })
           }
           className={buttonClass("danger", "sm")}
@@ -189,7 +192,11 @@ function ListForm({
   onClose: () => void;
 }) {
   const [state, action, saving] = useActionState<ListState, FormData>(
-    saveGroceryList,
+    async (previous, formData) => {
+      const result = await saveGroceryList(previous, formData);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
   const [kind, setKind] = useState(list?.kind ?? "weekly");
