@@ -24,7 +24,7 @@ README.md has setup and the command table; `package.json` scripts are the source
 - **After a server action, call `invalidateData()`** from `@/lib/client-data` so every mounted page refetches; the shell is static, so nothing else will. Wrap `useActionState` actions the same way. Sign-out calls `clearData()` first.
 - **API routes and the health check declare `export const dynamic = "force-dynamic"`.** They read the database at request time; pages no longer do. The layouts and `src/proxy.ts` only read the session cookie, which is why the proxy also keeps each role on its own surface.
 - **Env lives in `.env.local`, which is git-ignored.** `.env.example` is the committed template; update it when a new variable is introduced.
-- **Pushing to `main` deploys.** The Vercel project's own Git integration is on and overrides the `git.deploymentEnabled: false` in `vercel.json`; the `workflow_dispatch` GitHub Action is an unused fallback with no secrets configured. Functions run in `lhr1` (set in `vercel.json`) because the Neon database is in `eu-west-2`.
+- **Pushing to `main` deploys.** Vercel's Git integration builds every push; the `ignoreCommand` in `vercel.json` skips any branch but `main`. Do not add `git.deploymentEnabled: false` back: it silently stops pushes deploying. The `workflow_dispatch` GitHub Action is an unused fallback with no secrets configured. Functions run in `lhr1` (set in `vercel.json`) because the Neon database is in `eu-west-2`.
 
 ## Working here
 
