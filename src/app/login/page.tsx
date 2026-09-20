@@ -3,15 +3,15 @@ import { redirect } from "next/navigation";
 import { LoginForm } from "@/app/login/login-form";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Card } from "@/components/ui";
-import { currentViewer } from "@/lib/auth";
+import { readSession } from "@/lib/session";
 
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "Sign in" };
 
 export default async function LoginPage() {
-  const viewer = await currentViewer();
-  if (viewer) redirect(viewer.isAdmin ? "/admin" : "/today");
+  const session = await readSession();
+  if (session) redirect(session.role === "admin" ? "/admin" : "/today");
 
   return (
     <main className="flex min-h-dvh flex-col items-center justify-center gap-6 px-5 py-12">

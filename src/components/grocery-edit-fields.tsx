@@ -7,6 +7,7 @@ import {
   type GroceryFormState,
 } from "@/app/actions/groceries";
 import { buttonClass, cn, inputClass } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 import { CATEGORIES, CATEGORY_LABEL } from "@/lib/grocery-constants";
 import type { GroceryCategory } from "@/db/schema";
 
@@ -30,7 +31,11 @@ export function GroceryEditFields({
   onClose: () => void;
 }) {
   const [state, action, saving] = useActionState<GroceryFormState, FormData>(
-    updateGroceryItem,
+    async (previous, formData) => {
+      const result = await updateGroceryItem(previous, formData);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
 
@@ -130,6 +135,7 @@ export function GroceryEditFields({
           formNoValidate
           onClick={async () => {
             await deleteGroceryItem(item.id);
+            invalidateData();
             onClose();
           }}
           className={buttonClass("danger", "sm", "ml-auto")}

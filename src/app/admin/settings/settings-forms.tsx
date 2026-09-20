@@ -7,6 +7,7 @@ import {
   type SettingsState,
 } from "@/app/actions/household";
 import { Field, buttonClass, cn, inputClass } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 import { WEEKDAY_NAMES, WEEKDAY_SHORT } from "@/lib/dates";
 
 function Message({ state }: { state: SettingsState }) {
@@ -46,7 +47,11 @@ export function HouseholdForm({
   };
 }) {
   const [state, action, pending] = useActionState<SettingsState, FormData>(
-    saveHouseholdSettings,
+    async (previous, formData) => {
+      const result = await saveHouseholdSettings(previous, formData);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
 
@@ -183,7 +188,11 @@ export function OwnAccountForm({
   account: { name: string; email: string };
 }) {
   const [state, action, pending] = useActionState<SettingsState, FormData>(
-    saveOwnAccount,
+    async (previous, formData) => {
+      const result = await saveOwnAccount(previous, formData);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
 

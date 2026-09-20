@@ -7,6 +7,7 @@ import {
   type GroceryFormState,
 } from "@/app/actions/groceries";
 import { IconPlus, buttonClass, cn, inputClass } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 import { CATEGORIES, CATEGORY_LABEL } from "@/lib/grocery-constants";
 
 /** The add bar at the foot of the list. Stays focused so several items in a
@@ -25,7 +26,12 @@ export function GroceryAddForm({
   placeholder?: string;
 }) {
   const [state, action, pending] = useActionState<GroceryFormState, FormData>(
-    cycleId ? addItemToCycle : addGroceryItem,
+    async (previous, formData) => {
+      const add = cycleId ? addItemToCycle : addGroceryItem;
+      const result = await add(previous, formData);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
   const formRef = useRef<HTMLFormElement>(null);

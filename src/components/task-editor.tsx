@@ -14,6 +14,7 @@ import {
   cn,
   inputClass,
 } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 import { WEEKDAY_INITIAL, WEEKDAY_SHORT } from "@/lib/dates";
 
 export type EditorPerson = { id: number; name: string; role: "admin" | "employee" };
@@ -48,7 +49,11 @@ export function TaskEditor({
 }) {
   const router = useRouter();
   const [state, action, saving] = useActionState<TaskFormState, FormData>(
-    saveTask,
+    async (previous, formData) => {
+      const result = await saveTask(previous, formData);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
   const [archiving, startArchive] = useTransition();
@@ -352,6 +357,7 @@ export function TaskEditor({
             onClick={() =>
               startArchive(async () => {
                 await archiveTask(values.id as number);
+                invalidateData();
                 router.push("/admin/tasks");
               })
             }

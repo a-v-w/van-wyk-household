@@ -2,15 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { RecipeEditor } from "@/components/recipe-editor";
 import { Card, IconChevronLeft } from "@/components/ui";
-import { requireAdmin } from "@/lib/auth";
-
-export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = { title: "New recipe" };
 
-export default async function NewRecipePage() {
-  await requireAdmin();
-
+/** A pure form with nothing to load, so the whole page is static. */
+export default function NewRecipePage() {
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-5 py-6 lg:px-8 lg:py-8">
       <Link

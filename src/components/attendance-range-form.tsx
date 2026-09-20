@@ -7,6 +7,7 @@ import {
   type RangeState,
 } from "@/app/actions/household";
 import { Field, buttonClass, cn, inputClass } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 import {
   STATUS_ACTION,
   STATUS_CHOICES,
@@ -26,13 +27,21 @@ export function AttendanceRangeForm({
   defaultTo: string;
 }) {
   const [state, action, pending] = useActionState<RangeState, FormData>(
-    setDayRange,
+    async (previous, formData) => {
+      const result = await setDayRange(previous, formData);
+      invalidateData();
+      return result;
+    },
     undefined,
   );
   const [clearState, clearAction, clearing] = useActionState<
     RangeState,
     FormData
-  >(clearDayRange, undefined);
+  >(async (previous, formData) => {
+    const result = await clearDayRange(previous, formData);
+    invalidateData();
+    return result;
+  }, undefined);
 
   const message = state ?? clearState;
 

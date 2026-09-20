@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { clearDayStatus, setDayStatus } from "@/app/actions/household";
 import { IconCheck, IconUndo, buttonClass, cn, inputClass } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 import {
   STATUS_ACTION,
   STATUS_CHOICES,
@@ -38,6 +39,7 @@ export function DayStatusPicker({
   function choose(status: WorkdayStatus) {
     startTransition(async () => {
       await setDayStatus(day.userId, day.date, status, note);
+      invalidateData();
       onDone();
     });
   }
@@ -110,6 +112,7 @@ export function DayStatusPicker({
             onClick={() =>
               startTransition(async () => {
                 await clearDayStatus(day.userId, day.date);
+                invalidateData();
                 onDone();
               })
             }

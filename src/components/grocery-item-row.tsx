@@ -5,6 +5,7 @@ import type { GroceryCategory } from "@/db/schema";
 import { deleteGroceryItem } from "@/app/actions/groceries";
 import { GroceryEditFields } from "@/components/grocery-edit-fields";
 import { Avatar, Chip, IconPencil, IconTrash, cn } from "@/components/ui";
+import { invalidateData } from "@/lib/client-data";
 
 export type GroceryRowData = {
   id: number;
@@ -100,6 +101,7 @@ export function GroceryItemRow({ row }: { row: GroceryRowData }) {
           onClick={() =>
             startTransition(async () => {
               await deleteGroceryItem(row.id);
+              invalidateData();
             })
           }
           className="flex h-8 w-8 flex-none cursor-pointer items-center justify-center rounded-lg text-muted transition-colors hover:bg-danger-soft hover:text-danger"
