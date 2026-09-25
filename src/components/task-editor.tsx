@@ -15,7 +15,7 @@ import {
   inputClass,
 } from "@/components/ui";
 import { invalidateData } from "@/lib/client-data";
-import { WEEKDAY_INITIAL, WEEKDAY_SHORT } from "@/lib/dates";
+import { WEEKDAY_INITIAL, WEEKDAY_NAMES, WEEKDAY_SHORT } from "@/lib/dates";
 
 export type EditorPerson = { id: number; name: string; role: "admin" | "employee" };
 
@@ -31,6 +31,10 @@ export type TaskEditorValues = {
   interval: number;
   weekdays: number[];
   monthDay: number;
+  monthlyMode: "day_of_month" | "weekday_of_month";
+  /** 1–4, or -1 for the last one. */
+  monthWeek: number;
+  monthWeekday: number;
   dueDate: string;
   startDate: string;
   endDate: string;
@@ -61,6 +65,7 @@ export function TaskEditor({
   const [kind, setKind] = useState(values.kind);
   const [frequency, setFrequency] = useState(values.frequency);
   const [weekdays, setWeekdays] = useState<number[]>(values.weekdays);
+  const [monthlyMode, setMonthlyMode] = useState(values.monthlyMode);
   const [assignedTo, setAssignedTo] = useState(values.assignedTo);
 
   useEffect(() => {
@@ -228,16 +233,92 @@ export function TaskEditor({
           ) : null}
 
           {frequency === "monthly" ? (
-            <Field label="Day of the month">
-              <input
-                id="monthDay"
-                type="number"
-                name="monthDay"
-                min={1}
-                max={31}
-                defaultValue={values.monthDay}
-                className={cn(inputClass, "max-w-28")}
-              />
+            <Field
+              label="Which day"
+              hint="A date stays put; a weekday moves with the month, so the last Thursday is the 4th one some months and the 5th in others."
+            >
+              <div className="flex flex-col gap-3">
+                <div className="flex overflow-hidden rounded-lg border border-line-strong">
+                  {(
+                    [
+                      ["day_of_month", "A date"],
+                      ["weekday_of_month", "A weekday"],
+                    ] as const
+                  ).map(([option, label]) => (
+                    <label
+                      key={option}
+                      className={cn(
+                        "flex-1 cursor-pointer py-2 text-center text-sm font-bold transition-colors",
+                        monthlyMode === option
+                          ? "bg-accent text-accent-ink"
+                          : "bg-surface text-ink-2 hover:bg-surface-2",
+                      )}
+                    >
+                      <input
+                        type="radio"
+                        name="monthlyMode"
+                        value={option}
+                        checked={monthlyMode === option}
+                        onChange={() => setMonthlyMode(option)}
+                        className="sr-only"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+
+                {monthlyMode === "day_of_month" ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label htmlFor="monthDay" className="text-sm text-ink-2">
+                      On the
+                    </label>
+                    <input
+                      id="monthDay"
+                      type="number"
+                      name="monthDay"
+                      min={1}
+                      max={31}
+                      defaultValue={values.monthDay}
+                      className={cn(inputClass, "max-w-24")}
+                    />
+                    <span className="text-sm text-ink-2">of the month</span>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label htmlFor="monthWeek" className="text-sm text-ink-2">
+                      On the
+                    </label>
+                    <select
+                      id="monthWeek"
+                      name="monthWeek"
+                      defaultValue={String(values.monthWeek)}
+                      className={cn(inputClass, "max-w-36")}
+                    >
+                      <option value="1">first</option>
+                      <option value="2">second</option>
+                      <option value="3">third</option>
+                      <option value="4">fourth</option>
+                      <option value="-1">last</option>
+                    </select>
+                    <label htmlFor="monthWeekday" className="sr-only">
+                      Weekday
+                    </label>
+                    <select
+                      id="monthWeekday"
+                      name="monthWeekday"
+                      defaultValue={String(values.monthWeekday)}
+                      className={cn(inputClass, "max-w-40")}
+                    >
+                      {WEEKDAY_NAMES.map((name, index) => (
+                        <option key={name} value={index + 1}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-sm text-ink-2">of the month</span>
+                  </div>
+                )}
+              </div>
             </Field>
           ) : null}
 
@@ -296,6 +377,9 @@ export function TaskEditor({
               <span className="text-sm font-bold">Working days only</span>
               <span className="text-xs text-ink-2">
                 Skip days off. A weekend day marked as working still counts.
+                {frequency === "monthly"
+                  ? " On a monthly task this means a month is skipped outright when that day turns out to be leave — the preview below shows what actually happens."
+                  : ""}
               </span>
             </span>
           </label>

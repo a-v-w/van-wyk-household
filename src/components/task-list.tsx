@@ -1,6 +1,7 @@
 "use client";
 
-import { toggleTask } from "@/app/actions/tasks";
+import { useTransition } from "react";
+import { skipOccurrence, toggleTask } from "@/app/actions/tasks";
 import { toggleMeal } from "@/app/actions/meals";
 import { CheckButton } from "@/components/check-button";
 import { Chip, cn } from "@/components/ui";
@@ -19,12 +20,21 @@ export type TaskRowData = {
   /** Shown only when the list mixes people. */
   showAssignee: boolean;
   canTick: boolean;
+  /** Admin-only, on the catch-up list: excuse this one occurrence. */
+  canSkip?: boolean;
   completedLabel: string | null;
 };
 
 export function TaskRow({ row }: { row: TaskRowData }) {
+  const [skipping, startSkip] = useTransition();
+
   return (
-    <li className="flex items-start gap-3 border-b border-line px-4 py-3.5 last:border-b-0">
+    <li
+      className={cn(
+        "flex items-start gap-3 border-b border-line px-4 py-3.5 last:border-b-0",
+        skipping && "opacity-50",
+      )}
+    >
       <CheckButton
         done={row.done}
         disabled={!row.canTick}
@@ -62,6 +72,22 @@ export function TaskRow({ row }: { row: TaskRowData }) {
           ) : null}
         </div>
       </div>
+      {row.canSkip ? (
+        <button
+          type="button"
+          disabled={skipping}
+          title="It did not need doing. Takes it off the list for good."
+          onClick={() =>
+            startSkip(async () => {
+              await skipOccurrence(row.taskId, row.date);
+              invalidateData();
+            })
+          }
+          className="flex-none cursor-pointer self-center rounded-full border border-line-strong px-2.5 py-1 text-[11px] font-bold text-muted transition-colors hover:border-danger hover:text-danger"
+        >
+          Not needed
+        </button>
+      ) : null}
     </li>
   );
 }

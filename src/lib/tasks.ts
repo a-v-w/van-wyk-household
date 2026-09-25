@@ -13,7 +13,9 @@ import {
 import {
   daysBetween,
   isoWeekday,
+  shiftDate,
   startOfIsoWeek,
+  WEEKDAY_NAMES,
   type IsoDate,
 } from "@/lib/dates";
 import type { CalendarSet, WorkdayCalendar } from "@/lib/workdays";
@@ -66,26 +68,55 @@ export function occursOn(
     }
 
     case "monthly": {
-      const [, month, day] = date.split("-").map(Number);
+      const [year, month, day] = date.split("-").map(Number);
+      const [startYear, startMonth] = start.split("-").map(Number);
+      const months = (year - startYear) * 12 + (month - startMonth);
+      if (months < 0 || months % every !== 0) return false;
+
+      if (task.monthlyMode === "weekday_of_month") {
+        return isNthWeekday(
+          date,
+          task.monthWeek ?? 1,
+          task.monthWeekday ?? isoWeekday(start),
+        );
+      }
+
       const target = task.monthDay ?? Number(start.split("-")[2]);
-      const lastOfMonth = new Date(
-        Number(date.split("-")[0]),
-        month,
-        0,
-      ).getDate();
       // A 31st rule still fires on the 30th of a 30-day month.
-      const effective = Math.min(target, lastOfMonth);
-      if (day !== effective) return false;
-      const startParts = start.split("-").map(Number);
-      const months =
-        (Number(date.split("-")[0]) - startParts[0]) * 12 +
-        (month - startParts[1]);
-      return months >= 0 && months % every === 0;
+      return day === Math.min(target, daysInMonth(year, month));
     }
 
     default:
       return false;
   }
+}
+
+/** How many days a month has. `day 0` of the next month is this month's last. */
+export function daysInMonth(year: number, month: number): number {
+  return new Date(year, month, 0).getDate();
+}
+
+/**
+ * Whether a date is, say, the last Thursday of its month. `nth` counts from the
+ * start of the month, except -1, which means the last one — that is the whole
+ * point of the mode, since "the last Thursday" is the 4th in some months and
+ * the 5th in others.
+ */
+export function isNthWeekday(
+  date: IsoDate,
+  nth: number,
+  weekday: number,
+): boolean {
+  if (isoWeekday(date) !== weekday) return false;
+  const [year, month, day] = date.split("-").map(Number);
+  if (nth === -1) return day + 7 > daysInMonth(year, month);
+  return Math.floor((day - 1) / 7) + 1 === nth;
+}
+
+/** "the last", "the second" — how a week of the month reads in a sentence. */
+export function weekOfMonthName(nth: number): string {
+  if (nth === -1) return "the last";
+  return ["the first", "the second", "the third", "the fourth"][nth - 1] ?? "the first";
 }
 
 /** A human sentence for a task's rule, e.g. "Mon, Wed and Fri". */
@@ -115,10 +146,15 @@ export function describeRule(task: Task): string {
       return every === 1 ? list : `${list}, every ${every} weeks`;
     }
     case "monthly": {
-      const day = task.monthDay ?? 1;
+      const which =
+        task.monthlyMode === "weekday_of_month"
+          ? `${weekOfMonthName(task.monthWeek ?? 1)} ${
+              WEEKDAY_NAMES[(task.monthWeekday ?? 1) - 1]
+            }`
+          : `the ${ordinal(task.monthDay ?? 1)}`;
       return every === 1
-        ? `Monthly on the ${ordinal(day)}`
-        : `Every ${every} months on the ${ordinal(day)}`;
+        ? `Monthly on ${which}`
+        : `Every ${every} months on ${which}`;
     }
     default:
       return "Recurring";
@@ -148,7 +184,8 @@ export function nextOccurrences(
 ): IsoDate[] {
   const out: IsoDate[] = [];
   let cursor = from;
-  for (let i = 0; i < 400 && out.length < limit; i++) {
+  // Three years: a rule that only fires every few months still fills a preview.
+  for (let i = 0; i < 1100 && out.length < limit; i++) {
     if (occursOn(task, cursor, calendar)) out.push(cursor);
     const [y, m, d] = cursor.split("-").map(Number);
     const next = new Date(Date.UTC(y, m - 1, d + 1));
@@ -269,6 +306,43 @@ export async function loadOccurrences({
   }
 
   return out.sort(byTimeThenTitle);
+}
+
+/**
+ * What was due before today and never ticked, newest first. A missed
+ * occurrence stays here until someone ticks it or an admin skips it, so work
+ * that slipped is caught rather than quietly lost. Today is deliberately left
+ * out: it is still outstanding, not yet missed.
+ */
+export async function loadMissed({
+  householdId,
+  calendars,
+  today,
+  since,
+  assigneeId,
+}: {
+  householdId: number;
+  calendars: CalendarSet;
+  today: IsoDate;
+  /** The oldest date to look back to, inclusive. */
+  since: IsoDate;
+  assigneeId?: number;
+}): Promise<TaskOccurrence[]> {
+  if (since >= today) return [];
+
+  const occurrences = await loadOccurrences({
+    householdId,
+    from: since,
+    to: shiftDate(today, -1),
+    calendars,
+    assigneeId,
+  });
+
+  return occurrences
+    .filter((o) => !o.done)
+    .sort((a, b) =>
+      a.date === b.date ? byTimeThenTitle(a, b) : a.date < b.date ? 1 : -1,
+    );
 }
 
 function byTimeThenTitle(a: TaskOccurrence, b: TaskOccurrence): number {

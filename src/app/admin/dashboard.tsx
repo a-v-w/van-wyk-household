@@ -273,9 +273,12 @@ export function AdminDashboard() {
           <div className="mt-4 flex flex-col gap-2 border-t border-line pt-4">
             <div className="flex items-baseline justify-between gap-2">
               <span className="label text-danger">Missed earlier this week</span>
-              <span className="font-mono text-xs text-muted tabular">
-                {tasks.missedRows.length}
-              </span>
+              <Link
+                href="/admin/missed"
+                className="text-xs font-bold text-accent hover:underline"
+              >
+                Catch up
+              </Link>
             </div>
             <ul className="flex flex-wrap gap-x-5 gap-y-1.5">
               {tasks.missedRows.slice(0, 10).map((row) => (

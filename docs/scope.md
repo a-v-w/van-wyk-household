@@ -88,7 +88,7 @@ Title, optional notes, assignee, and a rule:
 | --- | --- |
 | Daily | every working day (default), or every calendar day |
 | Weekly | pick weekdays (e.g. Mon / Wed / Fri), every N weeks |
-| Monthly | on day N of the month |
+| Monthly | on a date ("the 5th"), or on a weekday in a chosen week ("the last Thursday"), every N months |
 
 Plus a start date, optional end date, optional time of day.
 
@@ -100,7 +100,21 @@ Occurrences are **computed from the rule when a date range is displayed**, not p
 - No background job is needed to "create tomorrow's tasks".
 - Editing a rule changes future occurrences only; past completions keep their dates.
 - The admin can **skip** a single date (e.g. public holiday) without touching the rule.
-- Recurrence is hand-rolled for the three frequencies above. No `rrule` library; the rules are small and the library's edge cases are not worth it.
+- Recurrence is hand-rolled for the three frequencies above. No `rrule` library; the rules are small and the library's edge cases are not worth it. The one borrowed idea is `rrule`'s negative index: a monthly week of `-1` means the last one.
+
+### Catching up on what was missed
+A task that was due before today and never ticked is **missed**. Because occurrences are derived, nothing is written when work slips — the missed list is re-derived on demand from the same rules, which is why it can never drift out of step with the schedule.
+
+Both sides can see it:
+
+- The employee gets a **Missed** tab on her Tasks page, next to Coming up, carrying a count. She can tick anything off late, which records her as having done it on that date.
+- The admin gets a **Missed** page of its own, filterable by person and over 7, 14, 30 or 90 days, with a count against each person.
+
+Two weeks is the default window on both, mirroring the fortnight the Tasks page already looks forward.
+
+Only the admin can mark a missed occurrence **not needed**. That writes the ordinary skip row, so it disappears for good rather than being nagged about forever — the escape valve that stops the list growing without bound.
+
+A day nobody was working never appears, because the task never occurred on it. A sick day removes the work rather than turning it into a debt.
 
 ### Employee experience
 - **Today** view: today's tasks plus any overdue once-off tasks, each with a checkbox. Ticking records who and when. Unticking is allowed on the same day.
@@ -237,10 +251,11 @@ Push notifications and WhatsApp are out of scope for v1. The reminder time is a 
 1. **Dashboard** — this week at a glance per person, the month's attendance summary, grocery cycle status, your own tasks for today, and the week strip for recording worked / off / sick / leave.
 2. **Attendance** — a month at a time, with a calendar, month navigation and the range form for booking leave ahead.
 3. **Tasks** — manage recurring and once-off tasks, filter by assignee; completion history.
-4. **Menus** — week editor with copy-last-week, several dishes per slot, and a recipe picker.
-5. **Recipes** — write and edit the cookbook.
-6. **Groceries** — current cycle, past cycles, order outcomes (ordered / out of stock / not needed), carry-over, copy-as-text, unlock, and full editing of any list at any time.
-7. **Settings** — the employee's account, default working days, recorded exceptions, timezone, reminder time, notification emails.
+4. **Missed** — what was due and never ticked, by person and over a chosen window; tick off late or mark not needed.
+5. **Menus** — week editor with copy-last-week, several dishes per slot, and a recipe picker.
+6. **Recipes** — write and edit the cookbook.
+7. **Groceries** — current cycle, past cycles, order outcomes (ordered / out of stock / not needed), carry-over, copy-as-text, unlock, and full editing of any list at any time.
+8. **Settings** — the employee's account, default working days, recorded exceptions, timezone, reminder time, notification emails.
 
 The employee opens the same URL in their phone's browser. A web manifest lets them add it to the home screen so it opens without browser chrome, but it is still the website; there is nothing to install from a store.
 
@@ -255,7 +270,7 @@ All tables hang off the existing `households` table. Timestamps are `timestamptz
 | `households` | exists | add `timezone`, `working_weekdays[]` (default Mon–Fri), `grocery_lock_weekday`, `grocery_lock_time`, `reminder_time` |
 | `users` | both people | `household_id`, `name`, `email`, `password_hash`, `role` (`admin` / `employee`) |
 | `workday_overrides` | a date that differed from the usual pattern | `household_id`, `date`, `status` (`working` / `off` / `sick` / `leave`), `note`, `recorded_by`; unique on `(household_id, date)` |
-| `tasks` | once-off and recurring | `title`, `notes`, `kind` (`once` / `recurring`), `due_date`, `frequency` (`daily` / `weekly` / `monthly`), `working_days_only`, `interval`, `weekdays[]`, `month_day`, `start_date`, `end_date`, `time_of_day`, `assigned_to` (user), `created_by`, `archived_at` |
+| `tasks` | once-off and recurring | `title`, `notes`, `kind` (`once` / `recurring`), `due_date`, `frequency` (`daily` / `weekly` / `monthly`), `working_days_only`, `interval`, `weekdays[]`, `month_day`, `monthly_mode`, `month_week`, `month_weekday`, `start_date`, `end_date`, `time_of_day`, `assigned_to` (user), `created_by`, `archived_at` |
 | `task_completions` | one row per tick | `task_id`, `occurrence_date`, `completed_by`, `completed_at`; unique on `(task_id, occurrence_date)` |
 | `task_skips` | admin skipped a single date | `task_id`, `occurrence_date` |
 | `recipes` | the household cookbook | `title`, `summary`, `servings`, `prep_minutes`, `ingredients`, `method`, `source_url`, `archived_at` |
