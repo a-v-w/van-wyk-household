@@ -3,7 +3,13 @@
 import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/db";
-import { taskSkips, tasks, users, type TaskFrequency } from "@/db/schema";
+import {
+  taskSkips,
+  tasks,
+  users,
+  type MonthlyMode,
+  type TaskFrequency,
+} from "@/db/schema";
 import { requireAdmin, requireViewer } from "@/lib/auth";
 import { setTaskDone } from "@/lib/tasks";
 
@@ -14,6 +20,7 @@ function refresh() {
   revalidatePath("/tasks");
   revalidatePath("/admin");
   revalidatePath("/admin/tasks");
+  revalidatePath("/admin/missed");
 }
 
 /* ------------------------------------------------------------- ticking off -- */
@@ -84,6 +91,17 @@ function parseTaskInput(formData: FormData, householdId: number) {
     Math.max(1, Number(formData.get("monthDay") ?? 1) || 1),
   );
 
+  // A monthly rule picks its day one of two ways: "the 5th", or "the last
+  // Thursday". Only the fields belonging to the chosen one are kept.
+  const byWeekday = formData.get("monthlyMode") === "weekday_of_month";
+  const weekChoice = Number(formData.get("monthWeek") ?? 1);
+  const monthWeek = [1, 2, 3, 4, -1].includes(weekChoice) ? weekChoice : 1;
+  const monthWeekday = Math.min(
+    7,
+    Math.max(1, Number(formData.get("monthWeekday") ?? 1) || 1),
+  );
+  const monthly = kind === "recurring" && frequency === "monthly";
+
   const dueDate = String(formData.get("dueDate") ?? "").trim() || null;
   const startDate = String(formData.get("startDate") ?? "").trim() || null;
   const endDate = String(formData.get("endDate") ?? "").trim() || null;
@@ -100,7 +118,12 @@ function parseTaskInput(formData: FormData, householdId: number) {
     frequency: kind === "recurring" ? frequency : null,
     interval,
     weekdays: kind === "recurring" && frequency === "weekly" ? weekdays : null,
-    monthDay: kind === "recurring" && frequency === "monthly" ? monthDay : null,
+    monthlyMode: (monthly && byWeekday
+      ? "weekday_of_month"
+      : "day_of_month") as MonthlyMode,
+    monthDay: monthly && !byWeekday ? monthDay : null,
+    monthWeek: monthly && byWeekday ? monthWeek : null,
+    monthWeekday: monthly && byWeekday ? monthWeekday : null,
     startDate: kind === "recurring" ? startDate : null,
     endDate: kind === "recurring" ? endDate : null,
   } as const;

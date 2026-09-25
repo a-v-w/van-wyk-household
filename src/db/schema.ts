@@ -23,6 +23,14 @@ export const taskFrequency = pgEnum("task_frequency", [
   "weekly",
   "monthly",
 ]);
+/**
+ * How a monthly rule picks its day: a number ("the 5th") or a weekday in a
+ * given week ("the last Thursday"). Existing rules are all day_of_month.
+ */
+export const monthlyMode = pgEnum("monthly_mode", [
+  "day_of_month",
+  "weekday_of_month",
+]);
 export const mealSlot = pgEnum("meal_slot", ["lunch", "dinner"]);
 export const prepTiming = pgEnum("prep_timing", ["same_day", "day_before"]);
 export const groceryStatus = pgEnum("grocery_status", [
@@ -163,8 +171,14 @@ export const tasks = pgTable(
     interval: smallint("interval").notNull().default(1),
     /** ISO weekdays for a weekly rule: 1 = Monday … 7 = Sunday. */
     weekdays: smallint("weekdays").array(),
-    /** Day of month for a monthly rule. */
+    /** Day of month for a monthly rule in day_of_month mode. */
     monthDay: smallint("month_day"),
+    /** Which way a monthly rule picks its day. */
+    monthlyMode: monthlyMode("monthly_mode").notNull().default("day_of_month"),
+    /** Which week of the month: 1–4, or -1 for the last one. */
+    monthWeek: smallint("month_week"),
+    /** ISO weekday for a weekday_of_month rule: 1 = Monday … 7 = Sunday. */
+    monthWeekday: smallint("month_weekday"),
     startDate: date("start_date"),
     endDate: date("end_date"),
     timeOfDay: time("time_of_day"),
@@ -565,3 +579,4 @@ export type PrepTiming = (typeof prepTiming.enumValues)[number];
 export type GroceryStatus = (typeof groceryStatus.enumValues)[number];
 export type GroceryCategory = (typeof groceryCategory.enumValues)[number];
 export type TaskFrequency = (typeof taskFrequency.enumValues)[number];
+export type MonthlyMode = (typeof monthlyMode.enumValues)[number];

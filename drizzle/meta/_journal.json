@@ -71,6 +71,13 @@
       "when": 1789725789822,
       "tag": "0009_notification_per_list",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790317572987,
+      "tag": "0010_monthly_weekday_rules",
+      "breakpoints": true
     }
   ]
 }

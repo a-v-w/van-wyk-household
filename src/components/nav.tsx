@@ -8,6 +8,7 @@ import {
   IconCalendar,
   IconCart,
   IconChecklist,
+  IconClock,
   IconGrid,
   IconList,
   IconMenu,
@@ -38,6 +39,7 @@ const EMPLOYEE_ITEMS: NavItem[] = [
 const ADMIN_ITEMS: NavItem[] = [
   { href: "/admin", label: "Dashboard", Icon: IconGrid },
   { href: "/admin/tasks", label: "Tasks", Icon: IconChecklist, prefix: true },
+  { href: "/admin/missed", label: "Missed", Icon: IconClock, prefix: true },
   {
     href: "/admin/attendance",
     label: "Attendance",

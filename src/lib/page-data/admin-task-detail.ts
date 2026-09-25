@@ -2,7 +2,7 @@ import "server-only";
 
 import type { EditorPerson, TaskEditorValues } from "@/components/task-editor";
 import { householdMembers, type Viewer } from "@/lib/auth";
-import { formatDayDate, shiftDate, todayIn } from "@/lib/dates";
+import { formatDayDate, isoWeekday, shiftDate, todayIn } from "@/lib/dates";
 import { loadTask, nextOccurrences, taskHistory } from "@/lib/tasks";
 import { loadWorkdayCalendar } from "@/lib/workdays";
 
@@ -59,6 +59,9 @@ export async function loadAdminTaskDetail(
       interval: task.interval,
       weekdays: task.weekdays ?? [],
       monthDay: task.monthDay ?? 1,
+      monthlyMode: task.monthlyMode,
+      monthWeek: task.monthWeek ?? 1,
+      monthWeekday: task.monthWeekday ?? isoWeekday(task.startDate ?? today),
       dueDate: task.dueDate ?? today,
       startDate: task.startDate ?? today,
       endDate: task.endDate ?? "",
